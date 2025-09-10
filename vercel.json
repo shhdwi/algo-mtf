@@ -1,0 +1,26 @@
+{
+  "functions": {
+    "src/app/api/ultimate-scanner/route.ts": {
+      "maxDuration": 800
+    },
+    "src/app/api/daily-scan/route.ts": {
+      "maxDuration": 800
+    },
+    "src/app/api/monitor-positions/route.ts": {
+      "maxDuration": 300
+    },
+    "src/app/api/nifty-scanner/route.ts": {
+      "maxDuration": 600
+    },
+    "src/app/api/bulletproof-scanner/route.ts": {
+      "maxDuration": 800
+    },
+    "src/app/api/enhanced-scanner/route.ts": {
+      "maxDuration": 600
+    }
+  },
+  "regions": ["bom1"],
+  "env": {
+    "NODE_ENV": "production"
+  }
+}
