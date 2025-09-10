@@ -84,7 +84,7 @@ export function validateHistoricalInterval(interval: string): boolean {
 /**
  * Converts string OHLC values to numbers
  */
-export function parseOHLCData(data: any[]): Array<{
+export function parseOHLCData(data: Array<{timestamp: string, open: string, high: string, low: string, close: string, volume: string}>): Array<{
   timestamp: string;
   datetime: Date;
   open: number;
@@ -107,7 +107,7 @@ export function parseOHLCData(data: any[]): Array<{
 /**
  * Converts string historical OHLC values to numbers (includes epochTime)
  */
-export function parseHistoricalOHLCData(data: any[]): Array<{
+export function parseHistoricalOHLCData(data: Array<{timestamp: string, epochTime: number, open: string, high: string, low: string, close: string, volume: string}>): Array<{
   timestamp: string;
   epochTime: number;
   datetime: Date;

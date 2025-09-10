@@ -137,14 +137,7 @@ class EntrySignalService {
         histogram_count: histogramCount,
         resistance_check: resistanceCheck,
         reasoning: signal.reasoning,
-        next_review: signal.nextReview,
-        debug_info: {
-          historical_data_points: tradingData.historicalData.length,
-          todays_candle_close: tradingData.todaysCandle.close || 0,
-          total_candles: allCandles.length,
-          last_candle_close: allCandles[allCandles.length - 1]?.close,
-          last_candle_date: allCandles[allCandles.length - 1]?.date
-        }
+        next_review: signal.nextReview
       };
 
     } catch (error) {
@@ -156,7 +149,7 @@ class EntrySignalService {
   /**
    * Calculate all technical indicators using the technicalindicators library
    */
-  private calculateTechnicalIndicators(candles: any[]): TechnicalIndicators {
+  private calculateTechnicalIndicators(candles: Array<{close: number}>): TechnicalIndicators {
     const closes = candles.map(c => c.close);
     const currentClose = closes[closes.length - 1];
 
@@ -210,7 +203,7 @@ class EntrySignalService {
   /**
    * Calculate consecutive positive histogram count
    */
-  private calculateHistogramCount(candles: any[]): number {
+  private calculateHistogramCount(candles: Array<{close: number}>): number {
     const closes = candles.map(c => c.close);
     
     const macdData = MACD.calculate({
@@ -224,7 +217,8 @@ class EntrySignalService {
 
     let consecutiveCount = 0;
     for (let i = macdData.length - 1; i >= 0; i--) {
-      if (macdData[i]?.histogram > 0) {
+      const dataPoint = macdData[i];
+      if (dataPoint && dataPoint.histogram !== undefined && dataPoint.histogram > 0) {
         consecutiveCount++;
       } else {
         break; // Stop at first non-positive histogram
@@ -240,7 +234,7 @@ class EntrySignalService {
   private evaluateEntryConditions(
     indicators: TechnicalIndicators, 
     histogramCount: number,
-    resistanceCheck: any
+    resistanceCheck: {passed: boolean, reason: string}
   ): EntryConditions {
     return {
       aboveEMA: indicators.close > indicators.ema50,
@@ -259,7 +253,7 @@ class EntrySignalService {
     conditions: EntryConditions, 
     indicators: TechnicalIndicators,
     histogramCount: number,
-    resistanceCheck: any
+    resistanceCheck: {passed: boolean, reason: string}
   ): {
     signal: 'ENTRY' | 'NO_ENTRY';
     confidence: number;

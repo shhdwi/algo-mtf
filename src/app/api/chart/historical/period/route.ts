@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import ChartService from '@/services/chartService';
-import { ExchangeCode, TimeInterval, HistoricalTimeInterval } from '@/types/chart';
+import { ExchangeCode, HistoricalTimeInterval } from '@/types/chart';
 
 type HistoricalPeriod = '1d' | '3d' | '1w' | '2w' | '1Month' | '3Month' | '6Month' | '1y' | '2y';
 

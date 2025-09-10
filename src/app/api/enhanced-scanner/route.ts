@@ -71,16 +71,33 @@ export async function POST(request: NextRequest) {
   }
 }
 
-function generateMarketInsights(results: any[]): any {
+interface ScanResult {
+  signal: 'ENTRY' | 'WATCHLIST' | 'NO_ENTRY' | 'ERROR';
+  symbol: string;
+  confidence: number;
+  win_probability?: number;
+  reasoning?: string;
+  risk_reward_ratio?: number;
+  current_price?: number;
+}
+
+function generateMarketInsights(results: ScanResult[]): Record<string, unknown> {
   const successful = results.filter(r => r.signal !== 'ERROR');
   const entries = results.filter(r => r.signal === 'ENTRY');
   const watchlist = results.filter(r => r.signal === 'WATCHLIST');
-  const noEntries = results.filter(r => r.signal === 'NO_ENTRY');
 
   // Calculate sector performance
-  const sectorPerformance: Record<string, any> = {};
+  const sectorPerformance: Record<string, {
+    total: number;
+    entries: number;
+    watchlist: number;
+    entry_rate: number;
+    avg_confidence: number;
+    avg_win_probability: number;
+  }> = {};
   Object.entries(STOCK_CATEGORIES).forEach(([sector, symbols]) => {
-    const sectorResults = results.filter(r => symbols.includes(r.symbol));
+    const symbolsList = symbols as readonly string[];
+    const sectorResults = results.filter(r => symbolsList.includes(r.symbol));
     const sectorEntries = sectorResults.filter(r => r.signal === 'ENTRY');
     const sectorWatchlist = sectorResults.filter(r => r.signal === 'WATCHLIST');
     
@@ -114,7 +131,7 @@ function generateMarketInsights(results: any[]): any {
       : 0,
     sector_performance: sectorPerformance,
     top_entries: entries
-      .sort((a, b) => b.win_probability - a.win_probability)
+      .sort((a, b) => (b.win_probability || 0) - (a.win_probability || 0))
       .slice(0, 5)
       .map(r => ({
         symbol: r.symbol,
@@ -141,7 +158,6 @@ export async function GET(request: NextRequest) {
   try {
     switch (action) {
       case 'health':
-        const enhancedService = new EnhancedEntrySignalService();
         // Health check would go here
         
         return NextResponse.json({

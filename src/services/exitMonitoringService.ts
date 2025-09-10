@@ -2,7 +2,6 @@ import { SMA, RSI } from 'technicalindicators';
 import CombinedTradingService from './combinedTradingService';
 import PositionManagerService, { Position } from './positionManagerService';
 import WhatsAppService from './whatsappService';
-import { ExchangeCode } from '@/types/chart';
 
 // 14-Level Trailing Stop Configuration
 const TRAILING_STOPS = [

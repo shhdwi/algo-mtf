@@ -158,7 +158,7 @@ export async function GET(request: NextRequest) {
 
       case 'banking':
         const bankingService = new EntrySignalService();
-        const bankingResult = await bankingService.getEntrySignalsSummary(STOCK_CATEGORIES.BANKING, 'NSE');
+        const bankingResult = await bankingService.getEntrySignalsSummary([...STOCK_CATEGORIES.BANKING], 'NSE');
         
         return NextResponse.json({
           success: true,
@@ -169,7 +169,7 @@ export async function GET(request: NextRequest) {
 
       case 'it':
         const itService = new EntrySignalService();
-        const itResult = await itService.getEntrySignalsSummary(STOCK_CATEGORIES.IT, 'NSE');
+        const itResult = await itService.getEntrySignalsSummary([...STOCK_CATEGORIES.IT], 'NSE');
         
         return NextResponse.json({
           success: true,

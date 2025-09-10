@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import SupportResistanceService from '@/services/supportResistanceService';
 import { ExchangeCode } from '@/types/chart';
-import { ALL_SYMBOLS } from '@/constants/symbols';
 
 interface SupportResistanceRequest {
   symbol: string;

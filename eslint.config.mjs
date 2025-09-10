@@ -20,6 +20,20 @@ const eslintConfig = [
       "next-env.d.ts",
     ],
   },
+  {
+    rules: {
+      // Allow 'any' in specific utility and data processing functions
+      "@typescript-eslint/no-explicit-any": ["warn", {
+        "ignoreRestArgs": true,
+        "fixToUnknown": false
+      }],
+      // Allow unused vars with underscore prefix
+      "@typescript-eslint/no-unused-vars": ["error", {
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_"
+      }]
+    }
+  }
 ];
 
 export default eslintConfig;

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import ChartService from '@/services/chartService';
+import { ExchangeCode, TimeInterval } from '@/types/chart';
 import { GetChartDataOptions } from '@/types/chart';
 import { ALL_SYMBOLS } from '@/constants/symbols';
 
@@ -68,7 +69,7 @@ export async function GET(request: NextRequest) {
         }
 
         const priceChartService = new ChartService();
-        const priceData = await priceChartService.getCurrentPrice(symbol, exchange as any);
+        const priceData = await priceChartService.getCurrentPrice(symbol, exchange as ExchangeCode);
         
         return NextResponse.json({
           success: true,
@@ -90,8 +91,8 @@ export async function GET(request: NextRequest) {
         const intradayChartService = new ChartService();
         const intradayData = await intradayChartService.getIntradayData(
           intradaySymbol, 
-          interval as any, 
-          intradayExchange as any
+          interval as TimeInterval, 
+          intradayExchange as ExchangeCode
         );
         
         return NextResponse.json({

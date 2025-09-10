@@ -24,8 +24,8 @@ export interface HistoricalChartDataPoint {
 export interface ChartDataRequest {
   token?: string;
   symbol?: string;
-  exchange: ExchangeCode;
-  interval: TimeInterval;
+  exchange: string;
+  interval: TimeInterval | HistoricalTimeInterval;
   start_time: string;
   end_time: string;
 }

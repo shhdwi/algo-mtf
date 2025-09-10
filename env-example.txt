@@ -1,0 +1,16 @@
+# Trading API Configuration
+TRADING_API_URL=https://cs-prod.lemonn.co.in
+TRADING_CLIENT_ID=your_client_id
+TRADING_PHONE_NUMBER=your_phone_number
+TRADING_PIN=your_pin
+TRADING_API_KEY=your_api_key
+TRADING_AUTH_KEY=your_private_key
+
+# WhatsApp API Configuration
+WHATSAPP_API_URL=https://graph.facebook.com/v22.0
+WHATSAPP_PHONE_NUMBER_ID=541000889093561
+WHATSAPP_ACCESS_TOKEN=your_whatsapp_access_token
+
+# Supabase Configuration
+SUPABASE_URL=https://yvvqgxqxmsccswmuwvdj.supabase.co
+SUPABASE_ANON_KEY=your_supabase_anon_key

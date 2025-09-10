@@ -91,9 +91,9 @@ class BulletproofScannerService {
     this.log(`🚀 Starting Bulletproof Scan ${scanId} for ${ALL_SYMBOLS.length} stocks`);
     
     const results: BulletproofScanResult[] = [];
-    let successCount = 0;
-    let partialSuccessCount = 0;
-    let failedCount = 0;
+    let _successCount = 0;
+    let _partialSuccessCount = 0;
+    let _failedCount = 0;
 
     // Process each stock with maximum reliability
     for (let i = 0; i < ALL_SYMBOLS.length; i++) {
@@ -111,13 +111,13 @@ class BulletproofScannerService {
       
       // Update counters
       if (result.status === 'SUCCESS') {
-        successCount++;
+        _successCount++;
         this.log(`✅ [${progress}] ${symbol}: ${result.signal} (${result.confidence}% conf, ${result.win_probability}% win)`, symbol);
       } else if (result.status === 'PARTIAL_SUCCESS') {
-        partialSuccessCount++;
+        _partialSuccessCount++;
         this.log(`⚠️ [${progress}] ${symbol}: ${result.signal} (partial data)`, symbol);
       } else {
-        failedCount++;
+        _failedCount++;
         this.log(`❌ [${progress}] ${symbol}: FAILED - ${result.error_details}`, symbol);
       }
 
@@ -164,7 +164,7 @@ class BulletproofScannerService {
           tradingData = await this.combinedService.getCombinedTradingData(symbol, exchange);
         } catch (error) {
           if (attempt === maxRetries) {
-            return this.createErrorResult(symbol, `Combined data failed: ${error.message}`, attempt);
+            return this.createErrorResult(symbol, `Combined data failed: ${error instanceof Error ? error.message : 'Unknown error'}`, attempt);
           }
           await this.delay(baseDelay * attempt);
           continue;
@@ -174,7 +174,7 @@ class BulletproofScannerService {
         let srData = null;
         try {
           srData = await this.srService.analyzeSupportResistance(symbol, exchange);
-        } catch (error) {
+        } catch {
           this.log(`⚠️ S/R analysis failed for ${symbol}, proceeding without it`, symbol);
         }
 
@@ -204,7 +204,7 @@ class BulletproofScannerService {
         const conditions = this.evaluateConditionsSafely(indicators, histogramCount, resistanceCheck);
         
         // Generate signal
-        const signal = this.generateSignalSafely(conditions, indicators, histogramCount);
+        const signal = this.generateSignalSafely(conditions);
 
         return {
           symbol,
@@ -227,8 +227,8 @@ class BulletproofScannerService {
         };
 
       } catch (error) {
-        lastError = error.message;
-        this.log(`❌ Attempt ${attempt}/${maxRetries} failed for ${symbol}: ${error.message}`, symbol);
+        lastError = error instanceof Error ? error.message : 'Unknown error';
+        this.log(`❌ Attempt ${attempt}/${maxRetries} failed for ${symbol}: ${error instanceof Error ? error.message : 'Unknown error'}`, symbol);
         
         if (attempt < maxRetries) {
           await this.delay(baseDelay * Math.pow(2, attempt - 1)); // Exponential backoff
@@ -242,7 +242,15 @@ class BulletproofScannerService {
   /**
    * Calculate indicators with error handling
    */
-  private calculateIndicatorsSafely(candles: any[]): any {
+  private calculateIndicatorsSafely(candles: Array<{open: number, high: number, low: number, close: number, volume: number}>): {
+    close: number;
+    ema50: number;
+    rsi14: number;
+    rsiSma14: number;
+    macd: number;
+    macdSignal: number;
+    histogram: number;
+  } {
     try {
       const closes = candles.map(c => c.close);
       const currentClose = closes[closes.length - 1];
@@ -277,7 +285,7 @@ class BulletproofScannerService {
         macdSignal: Math.round((latestMACD?.signal || 0) * 100) / 100,
         histogram: Math.round((latestMACD?.histogram || 0) * 100) / 100
       };
-    } catch (error) {
+    } catch {
       // Return safe defaults if calculation fails
       const currentClose = candles[candles.length - 1]?.close || 0;
       return {
@@ -295,7 +303,7 @@ class BulletproofScannerService {
   /**
    * Calculate histogram count with error handling
    */
-  private calculateHistogramCountSafely(candles: any[]): number {
+  private calculateHistogramCountSafely(candles: Array<{close: number}>): number {
     try {
       const closes = candles.map(c => c.close);
       
@@ -310,7 +318,8 @@ class BulletproofScannerService {
 
       let consecutiveCount = 0;
       for (let i = macdData.length - 1; i >= 0; i--) {
-        if (macdData[i]?.histogram > 0) {
+        const dataPoint = macdData[i];
+        if (dataPoint && dataPoint.histogram !== undefined && dataPoint.histogram > 0) {
           consecutiveCount++;
         } else {
           break;
@@ -318,7 +327,7 @@ class BulletproofScannerService {
       }
 
       return consecutiveCount;
-    } catch (error) {
+    } catch {
       return 0; // Safe default
     }
   }
@@ -326,7 +335,18 @@ class BulletproofScannerService {
   /**
    * Evaluate conditions with error handling
    */
-  private evaluateConditionsSafely(indicators: any, histogramCount: number, resistanceCheck: any): any {
+  private evaluateConditionsSafely(
+    indicators: {close: number, ema50: number, rsi14: number, rsiSma14: number, macd: number, macdSignal: number}, 
+    histogramCount: number, 
+    resistanceCheck: {passed: boolean}
+  ): {
+    aboveEMA: boolean;
+    rsiInRange: boolean; 
+    rsiAboveSMA: boolean;
+    macdBullish: boolean;
+    histogramOk: boolean;
+    resistanceOk: boolean;
+  } {
     try {
       return {
         aboveEMA: indicators.close > indicators.ema50,
@@ -336,7 +356,7 @@ class BulletproofScannerService {
         histogramOk: histogramCount <= 3,
         resistanceOk: resistanceCheck.passed
       };
-    } catch (error) {
+    } catch {
       return {
         aboveEMA: false,
         rsiInRange: false,
@@ -351,13 +371,20 @@ class BulletproofScannerService {
   /**
    * Generate signal with error handling
    */
-  private generateSignalSafely(conditions: any, indicators: any, histogramCount: number): any {
+  private generateSignalSafely(
+    conditions: {[key: string]: boolean}
+  ): {
+    signal: 'ENTRY' | 'NO_ENTRY' | 'WATCHLIST' | 'ERROR';
+    confidence: number;
+    winProbability: number;
+    reasoning: string;
+  } {
     try {
       const conditionsPassed = Object.values(conditions).filter(c => c === true).length;
       const confidence = Math.round((conditionsPassed / 6) * 100);
       const winProbability = Math.max(20, Math.min(95, confidence + 10));
 
-      let signal = 'NO_ENTRY';
+      let signal: 'ENTRY' | 'NO_ENTRY' | 'WATCHLIST' = 'NO_ENTRY';
       if (conditionsPassed === 6) {
         signal = 'ENTRY';
       } else if (conditionsPassed >= 4) {
@@ -397,7 +424,7 @@ class BulletproofScannerService {
         signal: 'ERROR',
         confidence: 0,
         winProbability: 0,
-        reasoning: `Signal generation failed: ${error.message}`
+        reasoning: `Signal generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`
       };
     }
   }

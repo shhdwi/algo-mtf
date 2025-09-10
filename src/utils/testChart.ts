@@ -1,7 +1,6 @@
 // Test utilities for Chart service
-import ChartService from '@/services/chartService';
-import { ALL_SYMBOLS, STOCK_CATEGORIES } from '@/constants/symbols';
-import { ExchangeCode, TimeInterval } from '@/types/chart';
+import { STOCK_CATEGORIES } from '@/constants/symbols';
+import { TimeInterval } from '@/types/chart';
 
 /**
  * Test single symbol chart data
@@ -115,7 +114,7 @@ export const testHistoricalData = async (
   symbol: string = 'RELIANCE',
   startDate: string = '2024-01-01T09:15:00',
   endDate: string = '2024-01-31T15:30:00',
-  interval: TimeInterval = '1d'
+  interval: TimeInterval = '60m'
 ) => {
   console.log(`Testing historical data for ${symbol}...`);
   
@@ -195,14 +194,14 @@ export const testSymbolsList = async () => {
  * Test banking sector stocks
  */
 export const testBankingStocks = async () => {
-  return testMultipleCharts(STOCK_CATEGORIES.BANKING, '5m', '2h');
+  return testMultipleCharts([...STOCK_CATEGORIES.BANKING], '5m', '2h');
 };
 
 /**
  * Test IT sector stocks
  */
 export const testITStocks = async () => {
-  return testMultipleCharts(STOCK_CATEGORIES.IT, '5m', '2h');
+  return testMultipleCharts([...STOCK_CATEGORIES.IT], '5m', '2h');
 };
 
 /**
@@ -223,8 +222,8 @@ export const runChartTestSuite = async () => {
     { name: 'Single Chart (RELIANCE)', fn: () => testSingleChart('RELIANCE') },
     { name: 'Current Price (TCS)', fn: () => testCurrentPrice('TCS') },
     { name: 'Intraday Data (HDFCBANK)', fn: () => testIntradayData('HDFCBANK') },
-    { name: 'Historical Data (RELIANCE - 1 month)', fn: () => testHistoricalData('RELIANCE', '2024-01-01T09:15:00', '2024-01-31T15:30:00', '1d') },
-    { name: 'Historical Period (TCS - 1 week)', fn: () => testHistoricalPeriodData('TCS', '1w') },
+    { name: 'Historical Data (RELIANCE - 1 month)', fn: () => testHistoricalData('RELIANCE', '2024-01-01T09:15:00', '2024-01-31T15:30:00', '60m') },
+    { name: 'Historical Period (TCS - 1 month)', fn: () => testHistoricalPeriodData('TCS', '1Month') },
     { name: 'Multiple Charts (Top 3)', fn: () => testMultipleCharts(['RELIANCE', 'TCS', 'HDFCBANK']) },
     { name: 'Banking Sector', fn: testBankingStocks }
   ];
@@ -238,8 +237,8 @@ export const runChartTestSuite = async () => {
       results.push({ name: test.name, status: 'PASSED', result });
       console.log(`✅ ${test.name} - PASSED`);
     } catch (error) {
-      results.push({ name: test.name, status: 'FAILED', error: error.message });
-      console.log(`❌ ${test.name} - FAILED:`, error.message);
+      results.push({ name: test.name, status: 'FAILED', error: error instanceof Error ? error.message : 'Unknown error' });
+      console.log(`❌ ${test.name} - FAILED:`, error instanceof Error ? error.message : 'Unknown error');
     }
   }
 

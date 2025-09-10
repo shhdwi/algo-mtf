@@ -23,7 +23,15 @@ class TradingClient {
   private requestCounts: Map<string, number[]> = new Map();
   private rateLimits: Record<string, { limit: number; window: number }>;
 
-  constructor(config: any = {}) {
+  constructor(config: {
+    baseUrl?: string;
+    clientId?: string;
+    phoneNumber?: string;
+    pin?: string;
+    apiKey?: string;
+    privateKey?: string;
+    ipWhitelist?: string[];
+  } = {}) {
     this.baseUrl = config.baseUrl || process.env.TRADING_API_URL || 'https://cs-prod.lemonn.co.in';
     this.clientId = config.clientId || process.env.TRADING_CLIENT_ID || '';
     this.phoneNumber = config.phoneNumber || process.env.TRADING_PHONE_NUMBER || '';
@@ -67,9 +75,9 @@ class TradingClient {
         this.ipWhitelist = config.ipWhitelist || this.ipWhitelist;
         console.log('✅ Trading configuration loaded');
       }
-    } catch (error) {
-      console.log('⚠️ No existing trading config found, will create new one');
-    }
+      } catch {
+        console.log('⚠️ No existing trading config found, will create new one');
+      }
   }
 
   /**
@@ -154,7 +162,7 @@ class TradingClient {
       
       return signature.toString('hex');
     } catch (error) {
-      throw new Error(`Ed25519 signature generation failed: ${error.message}`);
+      throw new Error(`Ed25519 signature generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
   
@@ -178,7 +186,8 @@ class TradingClient {
     ]);
     
     const base64Key = privateKeyInfo.toString('base64');
-    const pemKey = `-----BEGIN PRIVATE KEY-----\n${base64Key.match(/.{1,64}/g)!.join('\n')}\n-----END PRIVATE KEY-----`;
+    const base64Lines = base64Key.match(/.{1,64}/g) || [base64Key];
+    const pemKey = `-----BEGIN PRIVATE KEY-----\n${base64Lines.join('\n')}\n-----END PRIVATE KEY-----`;
     
     return pemKey;
   }
@@ -186,7 +195,12 @@ class TradingClient {
   /**
    * Make authenticated API request
    */
-  private async makeRequest(endpoint: string, options: any = {}): Promise<any> {
+  private async makeRequest(endpoint: string, options: {
+    method?: string;
+    body?: unknown;
+    headers?: Record<string, string>;
+    rateLimit?: string;
+  } = {}): Promise<unknown> {
     const { method = 'GET', body, headers = {}, rateLimit = 'data' } = options;
     
     // Check rate limits
@@ -222,7 +236,7 @@ class TradingClient {
       
       return data;
     } catch (error) {
-      console.error(`Request failed: ${method} ${endpoint}`, error.message);
+      console.error(`Request failed: ${method} ${endpoint}`, error instanceof Error ? error.message : 'Unknown error');
       throw error;
     }
   }
@@ -250,8 +264,9 @@ class TradingClient {
       rateLimit: 'authentication'
     });
     
-    this.accessToken = response.data.access_token;
-    this.accessTokenExpiry = response.data.expires_at;
+    const tokenResponse = response as {data: {access_token: string, expires_at: string}};
+    this.accessToken = tokenResponse.data.access_token;
+    this.accessTokenExpiry = tokenResponse.data.expires_at;
     
     console.log(`🎫 Access token generated, expires: ${new Date(this.accessTokenExpiry!).toLocaleString()}`);
     this.saveConfig();
@@ -328,7 +343,7 @@ class TradingClient {
       rateLimit: 'data'
     });
     
-    return response.data;
+    return (response as {data: unknown}).data;
   }
 
   /**

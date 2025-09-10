@@ -1,8 +1,7 @@
 import TradingClient from './tradingClient';
-import { ExchangeCode } from '@/types/chart';
 
 interface CacheEntry {
-  data: any;
+  data: unknown;
   timestamp: number;
   expiresAt: number;
 }
@@ -40,12 +39,12 @@ class EnhancedTradingClient {
   /**
    * Get chart data with retry logic and caching
    */
-  async getChartDataWithRetry(params: any, retryConfig: RetryConfig = {
+  async getChartDataWithRetry(params: {symbol: string, exchange: string, interval: string, start_time: string, end_time: string}, retryConfig: RetryConfig = {
     maxRetries: 3,
     baseDelay: 1000,
     maxDelay: 10000,
     backoffMultiplier: 2
-  }): Promise<any> {
+  }): Promise<unknown> {
     const cacheKey = this.generateCacheKey('chart', params);
     
     // Check cache first
@@ -76,13 +75,13 @@ class EnhancedTradingClient {
         return result;
         
       } catch (error) {
-        console.error(`❌ Attempt ${attempt} failed for ${params.symbol}:`, error.message);
+        console.error(`❌ Attempt ${attempt} failed for ${params.symbol}:`, error instanceof Error ? error.message : 'Unknown error');
         
         // Record failure for circuit breaker
         this.recordFailure();
         
         if (attempt === retryConfig.maxRetries) {
-          throw new Error(`Failed after ${retryConfig.maxRetries} attempts: ${error.message}`);
+          throw new Error(`Failed after ${retryConfig.maxRetries} attempts: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
         
         // Calculate delay with exponential backoff
@@ -102,7 +101,7 @@ class EnhancedTradingClient {
   /**
    * Get historical chart data with retry logic
    */
-  async getHistoricalChartDataWithRetry(params: any, retryConfig?: RetryConfig): Promise<any> {
+  async getHistoricalChartDataWithRetry(params: {symbol: string, exchange: string, interval: string, start_time: string, end_time: string}, retryConfig?: RetryConfig): Promise<unknown> {
     const cacheKey = this.generateCacheKey('historical', params);
     
     // Check cache first (historical data can be cached longer)
@@ -141,7 +140,7 @@ class EnhancedTradingClient {
         this.recordFailure();
         
         if (attempt === config.maxRetries) {
-          throw new Error(`Historical data failed after ${config.maxRetries} attempts: ${error.message}`);
+          throw new Error(`Historical data failed after ${config.maxRetries} attempts: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
         
         const delay = Math.min(
@@ -199,11 +198,11 @@ class EnhancedTradingClient {
   /**
    * Cache management
    */
-  private generateCacheKey(type: string, params: any): string {
+  private generateCacheKey(type: string, params: {symbol: string, interval?: string}): string {
     return `${type}_${params.symbol}_${params.interval || 'default'}_${new Date().toDateString()}`;
   }
 
-  private getFromCache(key: string): any | null {
+  private getFromCache(key: string): unknown | null {
     const entry = this.cache.get(key);
     if (!entry) return null;
     
@@ -215,7 +214,7 @@ class EnhancedTradingClient {
     return entry.data;
   }
 
-  private setCache(key: string, data: any, ttlMs: number): void {
+  private setCache(key: string, data: unknown, ttlMs: number): void {
     this.cache.set(key, {
       data,
       timestamp: Date.now(),
@@ -277,7 +276,7 @@ class EnhancedTradingClient {
         },
         last_success: new Date().toISOString()
       };
-    } catch (error) {
+    } catch {
       return {
         status: this.circuitBreaker.isOpen ? 'unhealthy' : 'degraded',
         cache_size: this.cache.size,

@@ -1,7 +1,7 @@
-import EntrySignalService, { EntrySignalResult } from './entrySignalService';
+import EntrySignalService from './entrySignalService';
 import SupportResistanceService from './supportResistanceService';
 import { ExchangeCode } from '@/types/chart';
-import { ALL_SYMBOLS, NIFTY_100_SYMBOLS, ADDITIONAL_SYMBOLS, STOCK_CATEGORIES } from '@/constants/symbols';
+import { ALL_SYMBOLS, NIFTY_100_SYMBOLS, STOCK_CATEGORIES } from '@/constants/symbols';
 
 export interface ScanResult {
   symbol: string;
@@ -90,8 +90,8 @@ class Nifty100ScannerService {
     const startTime = Date.now();
     
     const results: ScanResult[] = [];
-    let successCount = 0;
-    let failCount = 0;
+    // let successCount = 0;
+    // let failCount = 0;
 
     // Process stocks in batches to avoid overwhelming the API
     const batchSize = 5;
@@ -105,9 +105,9 @@ class Nifty100ScannerService {
       const batchResults = await this.processBatch(batch, exchange);
       results.push(...batchResults);
 
-      // Update counts
-      successCount += batchResults.filter(r => r.signal !== 'ERROR').length;
-      failCount += batchResults.filter(r => r.signal === 'ERROR').length;
+      // Update counts (for potential logging)
+      // successCount += batchResults.filter(r => r.signal !== 'ERROR').length;
+      // failCount += batchResults.filter(r => r.signal === 'ERROR').length;
 
       // Small delay between batches
       if (i < batches.length - 1) {
@@ -121,7 +121,7 @@ class Nifty100ScannerService {
     const filteredResults = this.applyFilters(results, filters);
 
     // Generate comprehensive summary
-    const summary = this.generateSummary(results, startTime);
+    const summary = this.generateSummary(results);
 
     return {
       results: filteredResults,
@@ -146,18 +146,18 @@ class Nifty100ScannerService {
           reasoning: entrySignal.reasoning,
           conditions: entrySignal.conditions,
           indicators: entrySignal.indicators,
-          resistance_distance: entrySignal.resistance_check.distancePercent,
+          resistance_distance: entrySignal.resistance_check.distancePercent ?? undefined,
           histogram_count: entrySignal.histogram_count
         });
 
       } catch (error) {
-        console.error(`❌ Failed to scan ${symbol}:`, error.message);
+        console.error(`❌ Failed to scan ${symbol}:`, error instanceof Error ? error.message : 'Unknown error');
         batchResults.push({
           symbol,
           signal: 'ERROR',
           confidence: 0,
           reasoning: 'Analysis failed',
-          error: error.message
+          error: error instanceof Error ? error.message : 'Unknown error'
         });
       }
     }
@@ -228,7 +228,7 @@ class Nifty100ScannerService {
   /**
    * Generate comprehensive summary
    */
-  private generateSummary(results: ScanResult[], startTime: number): Nifty100ScanSummary {
+  private generateSummary(results: ScanResult[]): Nifty100ScanSummary {
     const successful = results.filter(r => r.signal !== 'ERROR');
     const entries = results.filter(r => r.signal === 'ENTRY');
     const noEntries = results.filter(r => r.signal === 'NO_ENTRY');
@@ -263,7 +263,8 @@ class Nifty100ScannerService {
     const sectorBreakdown: Record<string, { total: number; entries: number; avg_confidence: number }> = {};
     
     Object.entries(STOCK_CATEGORIES).forEach(([sector, symbols]) => {
-      const sectorResults = results.filter(r => symbols.includes(r.symbol) && r.signal !== 'ERROR');
+      const symbolsList = symbols as readonly string[];
+      const sectorResults = results.filter(r => symbolsList.includes(r.symbol) && r.signal !== 'ERROR');
       const sectorEntries = sectorResults.filter(r => r.signal === 'ENTRY');
       const sectorAvgConf = sectorResults.length > 0
         ? Math.round(sectorResults.reduce((sum, r) => sum + r.confidence, 0) / sectorResults.length)
@@ -344,7 +345,7 @@ class Nifty100ScannerService {
           const signal = await this.entryService.analyzeEntrySignal(symbol, exchange);
           return { symbol, signal: signal.signal };
         } catch (error) {
-          return { symbol, signal: 'ERROR', error: error.message };
+          return { symbol, signal: 'ERROR', error: error instanceof Error ? error.message : 'Unknown error' };
         }
       });
 
@@ -398,7 +399,7 @@ class Nifty100ScannerService {
           reasoning: entrySignal.reasoning,
           conditions: entrySignal.conditions,
           indicators: entrySignal.indicators,
-          resistance_distance: entrySignal.resistance_check.distancePercent,
+          resistance_distance: entrySignal.resistance_check.distancePercent ?? undefined,
           histogram_count: entrySignal.histogram_count
         });
 
@@ -408,7 +409,7 @@ class Nifty100ScannerService {
           signal: 'ERROR',
           confidence: 0,
           reasoning: 'Analysis failed',
-          error: error.message
+          error: error instanceof Error ? error.message : 'Unknown error'
         });
       }
     }

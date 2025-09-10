@@ -248,7 +248,7 @@ export function getTradingCalendar(data: DailyOHLCData): {
   lowestVolumeDay: { date: string; volume: number };
 } {
   const weekends = data.dailyData.filter(d => d.isWeekend).length;
-  const volumes = data.dailyData.map(d => d.volume);
+  // const volumes = data.dailyData.map(d => d.volume); // For future volume analysis
   
   const highestVolumeDay = data.dailyData.reduce((max, current) => 
     current.volume > max.volume ? current : max

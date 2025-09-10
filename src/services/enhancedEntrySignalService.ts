@@ -102,8 +102,7 @@ class EnhancedEntrySignalService {
           high: tradingData.todaysCandle.high,
           low: tradingData.todaysCandle.low,
           close: tradingData.todaysCandle.close,
-          volume: tradingData.todaysCandle.volume,
-          dayOfWeek: new Date(tradingData.todaysCandle.date).toLocaleDateString('en-US', { weekday: 'long' })
+          volume: tradingData.todaysCandle.volume
         });
       }
 
@@ -121,7 +120,7 @@ class EnhancedEntrySignalService {
       );
 
       // Step 7: Evaluate enhanced entry conditions
-      const conditions = this.evaluateEnhancedConditions(indicators, histogramCount, resistanceCheck, allCandles);
+      const conditions = this.evaluateEnhancedConditions(indicators, histogramCount, resistanceCheck);
       
       // Step 8: Calculate market condition
       const marketCondition = await this.assessMarketCondition();
@@ -157,7 +156,11 @@ class EnhancedEntrySignalService {
   /**
    * Get combined data with retry logic
    */
-  private async getCombinedDataWithRetry(symbol: string, exchange: ExchangeCode, maxRetries: number = 3): Promise<any> {
+  private async getCombinedDataWithRetry(symbol: string, exchange: ExchangeCode, maxRetries: number = 3): Promise<{
+    historicalData: Array<{date: string, open: number, high: number, low: number, close: number, volume: number}>;
+    todaysCandle: {date: string, open: number, high: number, low: number, close: number, volume: number};
+    analysis?: unknown;
+  }> {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         return await this.combinedTradingService.getCombinedTradingData(symbol, exchange);
@@ -166,6 +169,7 @@ class EnhancedEntrySignalService {
         await this.delay(1000 * attempt);
       }
     }
+    throw new Error(`Failed to get combined data after ${maxRetries} attempts`);
   }
 
   /**
@@ -180,12 +184,13 @@ class EnhancedEntrySignalService {
         await this.delay(1000 * attempt);
       }
     }
+    throw new Error(`Failed to get S/R data after ${maxRetries} attempts`);
   }
 
   /**
    * Calculate enhanced technical indicators
    */
-  private calculateEnhancedIndicators(candles: any[]): EnhancedTechnicalIndicators {
+  private calculateEnhancedIndicators(candles: Array<{close: number, volume: number}>): EnhancedTechnicalIndicators {
     const closes = candles.map(c => c.close);
     const volumes = candles.map(c => c.volume);
     const currentClose = closes[closes.length - 1];
@@ -246,7 +251,7 @@ class EnhancedEntrySignalService {
   /**
    * Calculate histogram count
    */
-  private calculateHistogramCount(candles: any[]): number {
+  private calculateHistogramCount(candles: Array<{close: number}>): number {
     const closes = candles.map(c => c.close);
     
     const macdData = MACD.calculate({
@@ -260,7 +265,8 @@ class EnhancedEntrySignalService {
 
     let consecutiveCount = 0;
     for (let i = macdData.length - 1; i >= 0; i--) {
-      if (macdData[i]?.histogram > 0) {
+      const dataPoint = macdData[i];
+      if (dataPoint && dataPoint.histogram !== undefined && dataPoint.histogram > 0) {
         consecutiveCount++;
       } else {
         break;
@@ -276,8 +282,7 @@ class EnhancedEntrySignalService {
   private evaluateEnhancedConditions(
     indicators: EnhancedTechnicalIndicators,
     histogramCount: number,
-    resistanceCheck: any,
-    candles: any[]
+    resistanceCheck: {passed: boolean, reason: string, distancePercent: number | null, nearestResistance: number | null}
   ): EnhancedEntryConditions {
     // Original conditions
     const aboveEMA = indicators.close > indicators.ema50;
@@ -328,14 +333,20 @@ class EnhancedEntrySignalService {
     conditions: EnhancedEntryConditions,
     indicators: EnhancedTechnicalIndicators,
     histogramCount: number,
-    resistanceCheck: any
+    resistanceCheck: {passed: boolean, reason: string, distancePercent: number | null, nearestResistance: number | null}
   ): {
     signal: 'ENTRY' | 'NO_ENTRY' | 'WATCHLIST';
     confidence: number;
     winProbability: number;
     riskRewardRatio: number;
     reasoning: string;
-    riskAssessment: any;
+    riskAssessment: {
+      level: 'LOW' | 'MEDIUM' | 'HIGH';
+      stop_loss: number;
+      target1: number;
+      target2: number;
+      position_size_percent: number;
+    };
     nextReview: string;
   } {
     // Count passed conditions
@@ -359,10 +370,9 @@ class EnhancedEntrySignalService {
 
     const originalPassed = originalConditions.filter(c => c).length;
     const enhancedPassed = enhancedConditions.filter(c => c).length;
-    const totalPassed = originalPassed + enhancedPassed;
 
     // Calculate confidence (0-100)
-    let confidence = (originalPassed / 6) * 60 + (enhancedPassed / 6) * 40;
+    const confidence = (originalPassed / 6) * 60 + (enhancedPassed / 6) * 40;
 
     // Calculate win probability based on conditions met
     let winProbability = 30; // Base probability
@@ -491,7 +501,7 @@ class EnhancedEntrySignalService {
           results.push(result);
           successful++;
         } catch (error) {
-          console.error(`❌ Failed to analyze ${symbol}:`, error.message);
+          console.error(`❌ Failed to analyze ${symbol}:`, error instanceof Error ? error.message : 'Unknown error');
           failed++;
         }
         

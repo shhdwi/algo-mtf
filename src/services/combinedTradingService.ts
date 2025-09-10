@@ -1,7 +1,7 @@
 import TradingClient from './tradingClient';
 import DailyOHLCService from './dailyOHLCService';
 import { ExchangeCode } from '@/types/chart';
-import { normalizeExchange, parseOHLCData, isMarketOpen } from '@/utils/chartUtils';
+import { normalizeExchange, parseOHLCData } from '@/utils/chartUtils';
 
 export interface TodaysCandleData {
   date: string;
@@ -152,7 +152,7 @@ class CombinedTradingService {
       // LOG ALL INTRADAY DATA POINTS
       if (response?.data?.points?.length > 0) {
         console.log(`\n📊 ${symbol} INTRADAY DATA POINTS (${response.data.points.length} total):`);
-        response.data.points.forEach((point: any, index: number) => {
+        response.data.points.forEach((point: {timestamp: string, open: string, high: string, low: string, close: string, volume: string}, index: number) => {
           console.log(`  ${index + 1}. ${point.timestamp} | O:${point.open} H:${point.high} L:${point.low} C:${point.close} V:${point.volume}`);
         });
         console.log(`📊 ${symbol} INTRADAY SUMMARY: First: ${response.data.points[0].close}, Last: ${response.data.points[response.data.points.length - 1].close}`);
@@ -189,10 +189,10 @@ class CombinedTradingService {
 
     } catch (error) {
       // If intraday data fails, create a placeholder based on last known price
-      console.log(`🔍 DEBUG ${symbol} intraday FAILED: ${error.message}`);
+      console.log(`🔍 DEBUG ${symbol} intraday FAILED: ${error instanceof Error ? error.message : 'Unknown error'}`);
       
       return {
-        date: today.toISOString().slice(0, 10),
+        date: today,
         open: 0,
         high: 0,
         low: 0,
@@ -210,7 +210,28 @@ class CombinedTradingService {
   /**
    * Calculate technical analysis on combined data
    */
-  private calculateCombinedAnalysis(historicalData: any[], todaysCandle: TodaysCandleData): any {
+  private calculateCombinedAnalysis(
+    historicalData: Array<{close: number, high: number, low: number, volume: number}>, 
+    todaysCandle: TodaysCandleData
+  ): {
+    currentVsYesterday: {
+      priceChange: number;
+      priceChangePercent: number;
+      volumeChange: number;
+      volumeChangePercent: number;
+    };
+    technicalLevels: {
+      support: number;
+      resistance: number;
+      movingAverage20: number;
+      movingAverage50: number;
+    };
+    marketContext: {
+      isMarketOpen: boolean;
+      timeUntilClose: string;
+      tradingSession: 'pre-market' | 'market-hours' | 'post-market' | 'closed';
+    };
+  } {
     const yesterday = historicalData[historicalData.length - 1];
     const last20Days = historicalData.slice(-20);
     const last50Days = historicalData.slice(-50);

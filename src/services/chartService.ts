@@ -2,13 +2,12 @@ import {
   ChartDataRequest, 
   ChartDataResponse, 
   HistoricalChartDataResponse,
-  ChartApiError, 
   OHLCData,
   HistoricalOHLCData, 
   ChartServiceConfig, 
   GetChartDataOptions,
   ExchangeCode,
-  TimeInterval,
+  TimeInterval, 
   HistoricalTimeInterval 
 } from '@/types/chart';
 import { 

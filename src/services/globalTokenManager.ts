@@ -114,6 +114,10 @@ class GlobalTokenManager {
       
       console.log(`✅ Global Token Manager: Token refreshed, expires: ${this.accessTokenExpiry.toLocaleString()}`);
       
+      if (!this.accessToken) {
+        throw new Error('Failed to get access token from API response');
+      }
+      
       return this.accessToken;
       
     } catch (error) {
@@ -144,7 +148,7 @@ class GlobalTokenManager {
       
       return signature.toString('hex');
     } catch (error) {
-      throw new Error(`Ed25519 signature generation failed: ${error.message}`);
+      throw new Error(`Ed25519 signature generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
@@ -188,7 +192,7 @@ class GlobalTokenManager {
   /**
    * Make authenticated API request
    */
-  async makeAuthenticatedRequest(endpoint: string, options: RequestInit = {}): Promise<any> {
+  async makeAuthenticatedRequest(endpoint: string, options: RequestInit = {}): Promise<unknown> {
     const headers = await this.getAuthHeaders();
     
     const response = await fetch(`${this.config.baseUrl}${endpoint}`, {

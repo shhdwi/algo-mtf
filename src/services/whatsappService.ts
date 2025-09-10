@@ -78,7 +78,7 @@ class WhatsAppService {
       const successData = data as WhatsAppApiResponse;
       return {
         success: true,
-        messageId: successData.messages[0]?.id
+        messageId: successData.messages?.[0]?.id
       };
 
     } catch (error) {
@@ -139,7 +139,7 @@ class WhatsAppService {
       const successData = data as WhatsAppApiResponse;
       return {
         success: true,
-        messageId: successData.messages[0]?.id
+        messageId: successData.messages?.[0]?.id
       };
 
     } catch (error) {

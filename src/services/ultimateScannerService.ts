@@ -278,7 +278,7 @@ class UltimateScannerService {
   /**
    * Process single stock with ultimate reliability using CombinedTradingService
    */
-  private async processStockUltimately(symbol: string, exchange: ExchangeCode, stockIndex: number): Promise<UltimateScanResult> {
+  private async processStockUltimately(symbol: string, exchange: ExchangeCode, _stockIndex: number): Promise<UltimateScanResult> {
     const maxRetries = 3;
     let retryCount = 0;
     
@@ -338,7 +338,7 @@ class UltimateScannerService {
           this.log(`✅ S/R analysis completed for ${symbol}: ${resistanceCheck.passed ? 'PASSED' : 'FAILED'} - ${resistanceCheck.reason}`);
         } catch (error) {
           // Apply your specific logic for missing S/R data
-          this.log(`⚠️ S/R analysis failed for ${symbol}, applying fallback logic: ${error.message}`);
+          this.log(`⚠️ S/R analysis failed for ${symbol}, applying fallback logic: ${error instanceof Error ? error.message : 'Unknown error'}`);
           resistanceCheck = this.handleMissingSRData(indicators.close, allCandles);
         }
         
@@ -362,7 +362,7 @@ class UltimateScannerService {
         };
 
       } catch (error) {
-        this.log(`❌ Attempt ${attempt}/${maxRetries} failed for ${symbol}: ${error.message}`);
+        this.log(`❌ Attempt ${attempt}/${maxRetries} failed for ${symbol}: ${error instanceof Error ? error.message : 'Unknown error'}`);
         
         // Log the error for debugging
         
@@ -405,30 +405,17 @@ class UltimateScannerService {
   /**
    * Get historical data with fallbacks
    */
-  private async getHistoricalDataSafely(symbol: string, exchange: ExchangeCode): Promise<any[]> {
+  private async getHistoricalDataSafely(symbol: string, exchange: ExchangeCode): Promise<Array<{date: string, open: number, high: number, low: number, close: number, volume: number}>> {
     try {
-      // Try to get 1 year of daily data (simpler than 3 years)
-      const response = await this.tradingClient.getHistoricalChartData({
-        symbol: symbol.toUpperCase(),
-        exchange,
-        interval: '1Y',
-        start_time: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19),
-        end_time: new Date().toISOString().slice(0, 19)
-      });
+      // Try to get combined trading data (includes historical + intraday)
+      const tradingData = await this.combinedTradingService.getCombinedTradingData(symbol, exchange);
 
-      if (response.data && response.data.points) {
-        return response.data.points.map((p: any) => ({
-          date: p.timestamp.split('T')[0],
-          open: parseFloat(p.open),
-          high: parseFloat(p.high),
-          low: parseFloat(p.low),
-          close: parseFloat(p.close),
-          volume: parseInt(p.volume)
-        }));
+      if (tradingData && tradingData.historicalData) {
+        return tradingData.historicalData;
       }
       
       throw new Error('No historical data available');
-    } catch (error) {
+    } catch {
       // Return minimal fallback data if historical fails
       const currentPrice = 1000; // Fallback price
       return [{
@@ -445,34 +432,30 @@ class UltimateScannerService {
   /**
    * Get today's data with fallbacks
    */
-  private async getTodaysDataSafely(symbol: string, exchange: ExchangeCode): Promise<any | null> {
+  private async getTodaysDataSafely(symbol: string, exchange: ExchangeCode): Promise<{date: string, open: number, high: number, low: number, close: number, volume: number} | null> {
     try {
       const now = new Date();
       const marketOpen = new Date(now);
       marketOpen.setHours(9, 15, 0, 0);
       
-      const response = await this.tradingClient.getChartData({
-        symbol: symbol.toUpperCase(),
-        exchange,
-        interval: '5m',
-        start_time: marketOpen.toISOString().slice(0, 19),
-        end_time: now.toISOString().slice(0, 19)
-      });
+      // Use CombinedTradingService instead
+      const tradingData = await this.combinedTradingService.getCombinedTradingData(symbol, exchange);
+      const response = { data: { points: tradingData ? [tradingData.todaysCandle] : [] } };
 
       if (response.data && response.data.points && response.data.points.length > 0) {
-        const points = response.data.points;
+        const todaysCandle = response.data.points[0];
         return {
           date: now.toISOString().split('T')[0],
-          open: parseFloat(points[0].open),
-          high: Math.max(...points.map((p: any) => parseFloat(p.high))),
-          low: Math.min(...points.map((p: any) => parseFloat(p.low))),
-          close: parseFloat(points[points.length - 1].close),
-          volume: points.reduce((sum: number, p: any) => sum + parseInt(p.volume), 0)
+          open: todaysCandle.open,
+          high: todaysCandle.high,
+          low: todaysCandle.low,
+          close: todaysCandle.close,
+          volume: todaysCandle.volume
         };
       }
       
       return null;
-    } catch (error) {
+    } catch {
       return null;
     }
   }
@@ -495,7 +478,7 @@ class UltimateScannerService {
         await this.delay(2000);
         return;
       } catch (error) {
-        this.log(`❌ Token refresh attempt ${attempt}/${maxRetries} failed: ${error.message}`);
+        this.log(`❌ Token refresh attempt ${attempt}/${maxRetries} failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
         
         if (attempt < maxRetries) {
           await this.delay(3000 * attempt); // Progressive delay
@@ -547,11 +530,11 @@ class UltimateScannerService {
         ema50: Math.round(ema50 * 100) / 100,
         rsi14: Math.round(rsi14 * 100) / 100,
         rsiSma14: Math.round(rsiSma14 * 100) / 100,
-        macd: Math.round(latestMACD.MACD * 100) / 100,
-        macdSignal: Math.round(latestMACD.signal * 100) / 100,
-        histogram: Math.round(latestMACD.histogram * 100) / 100
+        macd: Math.round((latestMACD.MACD ?? 0) * 100) / 100,
+        macdSignal: Math.round((latestMACD.signal ?? 0) * 100) / 100,
+        histogram: Math.round((latestMACD.histogram ?? 0) * 100) / 100
       };
-    } catch (error) {
+    } catch {
       // Return safe defaults
       const currentClose = candles[candles.length - 1]?.close || 1000;
       return {
@@ -569,7 +552,7 @@ class UltimateScannerService {
   /**
    * Calculate histogram count safely
    */
-  private calculateHistogramCountSafely(candles: any[]): number {
+  private calculateHistogramCountSafely(candles: Array<{close: number}>): number {
     try {
       const closes = candles.map(c => c.close).filter(c => c > 0);
       if (closes.length < 26) return 0;
@@ -585,7 +568,8 @@ class UltimateScannerService {
 
       let consecutiveCount = 0;
       for (let i = macdData.length - 1; i >= 0; i--) {
-        if (macdData[i]?.histogram > 0) {
+        const dataPoint = macdData[i];
+        if (dataPoint && dataPoint.histogram !== undefined && dataPoint.histogram > 0) {
           consecutiveCount++;
         } else {
           break;
@@ -593,7 +577,7 @@ class UltimateScannerService {
       }
 
       return consecutiveCount;
-    } catch (error) {
+    } catch {
       return 0;
     }
   }
@@ -622,7 +606,7 @@ class UltimateScannerService {
           reason: 'No resistance data but support data available - allowing entry'
         };
       }
-    } catch (error) {
+    } catch {
       // Default to false if analysis fails
       return {
         passed: false,

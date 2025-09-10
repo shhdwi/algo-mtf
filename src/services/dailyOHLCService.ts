@@ -1,5 +1,5 @@
 import TradingClient from './tradingClient';
-import { ExchangeCode, HistoricalOHLCData } from '@/types/chart';
+import { ExchangeCode } from '@/types/chart';
 import { normalizeExchange, parseHistoricalOHLCData } from '@/utils/chartUtils';
 
 export interface DailyOHLCRequest {

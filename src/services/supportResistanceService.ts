@@ -78,7 +78,12 @@ class SupportResistanceService {
   /**
    * Get combined data with retry logic for reliability
    */
-  private async getCombinedDataWithRetry(symbol: string, exchange: ExchangeCode, maxRetries: number = 3): Promise<any> {
+  private async getCombinedDataWithRetry(symbol: string, exchange: ExchangeCode, maxRetries: number = 3): Promise<{
+    symbol: string;
+    exchange: string;
+    historicalData: Array<{date: string, open: number, high: number, low: number, close: number, volume: number}>;
+    todaysCandle: {date: string, open: number, high: number, low: number, close: number, volume: number};
+  }> {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         // Refresh token before each attempt if it's not the first
@@ -98,7 +103,7 @@ class SupportResistanceService {
         });
 
         // Convert to required format
-        const historicalData = historicalResponse.data.points?.map((p: any) => ({
+        const historicalData = historicalResponse.data.points?.map((p: {timestamp: string, open: string, high: string, low: string, close: string, volume: string}) => ({
           date: p.timestamp.split('T')[0],
           open: parseFloat(p.open),
           high: parseFloat(p.high),
@@ -124,13 +129,13 @@ class SupportResistanceService {
             todaysCandle = {
               date: new Date().toISOString().split('T')[0],
               open: parseFloat(points[0].open),
-              high: Math.max(...points.map((p: any) => parseFloat(p.high))),
-              low: Math.min(...points.map((p: any) => parseFloat(p.low))),
+              high: Math.max(...points.map((p: {high: string}) => parseFloat(p.high))),
+              low: Math.min(...points.map((p: {low: string}) => parseFloat(p.low))),
               close: parseFloat(points[points.length - 1].close),
-              volume: points.reduce((sum: number, p: any) => sum + parseInt(p.volume), 0)
+              volume: points.reduce((sum: number, p: {volume: string}) => sum + parseInt(p.volume), 0)
             };
           }
-        } catch (todayError) {
+        } catch {
           console.log(`⚠️ Today's data failed for ${symbol}, using historical only`);
         }
 
@@ -142,7 +147,7 @@ class SupportResistanceService {
         };
         
       } catch (error) {
-        console.log(`❌ S/R data attempt ${attempt}/${maxRetries} failed for ${symbol}: ${error.message}`);
+        console.log(`❌ S/R data attempt ${attempt}/${maxRetries} failed for ${symbol}: ${error instanceof Error ? error.message : 'Unknown error'}`);
         
         if (attempt === maxRetries) {
           // If all retries failed, create minimal fallback data
@@ -153,12 +158,18 @@ class SupportResistanceService {
         await this.delay(5000 * attempt); // 5s, 10s, 15s delays
       }
     }
+    throw new Error(`Failed to get combined data after ${maxRetries} attempts`);
   }
 
   /**
    * Create minimal fallback data for S/R analysis
    */
-  private createFallbackTradingData(symbol: string, exchange: ExchangeCode): any {
+  private createFallbackTradingData(symbol: string, exchange: ExchangeCode): {
+    symbol: string;
+    exchange: string;
+    historicalData: Array<{date: string, open: number, high: number, low: number, close: number, volume: number}>;
+    todaysCandle: {date: string, open: number, high: number, low: number, close: number, volume: number};
+  } {
     // Create minimal historical data for S/R analysis
     const fallbackCandles = [];
     const basePrice = 1000; // Fallback base price
@@ -223,8 +234,7 @@ class SupportResistanceService {
           high: tradingData.todaysCandle.high,
           low: tradingData.todaysCandle.low,
           close: tradingData.todaysCandle.close,
-          volume: tradingData.todaysCandle.volume,
-          dayOfWeek: new Date(tradingData.todaysCandle.date).toLocaleDateString('en-US', { weekday: 'long' })
+          volume: tradingData.todaysCandle.volume
         });
       }
 
@@ -281,7 +291,7 @@ class SupportResistanceService {
   /**
    * Step 1: Detect pivot points using the exact Pine Script logic
    */
-  private detectPivots(candles: any[], prd: number): PivotPoint[] {
+  private detectPivots(candles: Array<{high: number, low: number, date: string}>, prd: number): PivotPoint[] {
     const pivots: PivotPoint[] = [];
 
     // Need at least 2*prd + 1 candles for pivot detection
@@ -337,7 +347,7 @@ class SupportResistanceService {
   /**
    * Calculate high-low range for channel width validation
    */
-  private calculateHighLowRange(candles: any[]): number {
+  private calculateHighLowRange(candles: Array<{high: number, low: number}>): number {
     const highs = candles.map(c => c.high);
     const lows = candles.map(c => c.low);
     return Math.max(...highs) - Math.min(...lows);
@@ -395,7 +405,7 @@ class SupportResistanceService {
   /**
    * Step 3: Calculate channel strength
    */
-  private calculateChannelStrengths(channels: Channel[], candles: any[]): Channel[] {
+  private calculateChannelStrengths(channels: Channel[], candles: Array<{high: number, low: number, close: number}>): Channel[] {
     return channels.map(channel => {
       let strength = channel.pivots.length * 20; // 20 points per pivot
 
