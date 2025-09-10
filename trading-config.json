@@ -1,0 +1,10 @@
+{
+  "clientId": "CS14866693",
+  "phoneNumber": "7977814522",
+  "apiKey": "aa5d428e8778e95fdd414a89f7d2cc55321e74914d8f7d5a670f89e123788f40",
+  "privateKey": "1141271d229e8eaa532a09bc535a29b8bb92f6e474117bf0037e6c3bb8b75cf0",
+  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxNDg2NjY5MywiY2xpZW50X2lkIjoiQ1MxNDg2NjY5MyIsImlzcyI6ImFwaS10cmFkaW5nIiwic3ViIjoiMTQ4NjY2OTMiLCJleHAiOjE3NTczNzc4MDAsIm5iZiI6MTc1NzMyMjc2OCwiaWF0IjoxNzU3MzIyNzY4fQ._SDiOUgx8HEUJEIQQKlqS_mEuri0aU-6LNcnTrAiRIk",
+  "accessTokenExpiry": "2025-09-09T06:00:00+05:30",
+  "ipWhitelist": [],
+  "savedAt": "2025-09-08T09:12:48.290Z"
+}
