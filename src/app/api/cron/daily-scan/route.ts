@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
     // Call the daily scan API internally
     const baseUrl = process.env.VERCEL_URL 
       ? `https://${process.env.VERCEL_URL}` 
-      : 'http://localhost:3000';
+      : 'https://algo-mtf.vercel.app';
     
     const response = await fetch(`${baseUrl}/api/daily-scan`, {
       method: 'POST',
