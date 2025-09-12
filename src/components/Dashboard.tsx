@@ -37,7 +37,7 @@ export default function Dashboard() {
       const response = await fetch('/api/monitor-positions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ send_whatsapp: false })
+        body: JSON.stringify({ send_whatsapp: true })
       });
       
       if (response.ok) {
