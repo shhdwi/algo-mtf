@@ -11,6 +11,7 @@ export interface Position {
   pnl_amount: number;
   pnl_percentage: number;
   status: 'ACTIVE' | 'EXITED' | 'STOPPED';
+  trailing_level?: number; // Current trailing stop level (0 = no level reached)
   exit_date?: string;
   exit_time?: string;
   exit_price?: number;
@@ -187,6 +188,50 @@ class PositionManagerService {
       if (error) throw new Error(error.message);
     } catch (error) {
       console.error(`Error updating PnL for ${symbol}:`, error);
+    }
+  }
+
+  /**
+   * Update position trailing level
+   */
+  async updateTrailingLevel(symbol: string, newLevel: number): Promise<boolean> {
+    try {
+      // Get current trailing level to check if it changed
+      const { data: position, error: fetchError } = await this.supabase
+        .from('positions')
+        .select('trailing_level')
+        .eq('symbol', symbol)
+        .eq('status', 'ACTIVE')
+        .single();
+
+      if (fetchError || !position) {
+        console.error(`Position not found for ${symbol}`);
+        return false;
+      }
+
+      const currentLevel = position.trailing_level || 0;
+      
+      // Only update if level actually changed
+      if (currentLevel !== newLevel) {
+        const { error } = await this.supabase
+          .from('positions')
+          .update({
+            trailing_level: newLevel,
+            updated_at: new Date().toISOString()
+          })
+          .eq('symbol', symbol)
+          .eq('status', 'ACTIVE');
+
+        if (error) throw new Error(error.message);
+        
+        console.log(`📈 Updated trailing level for ${symbol}: ${currentLevel} → ${newLevel}`);
+        return true; // Level changed
+      }
+      
+      return false; // Level didn't change
+    } catch (error) {
+      console.error(`Error updating trailing level for ${symbol}:`, error);
+      return false;
     }
   }
 

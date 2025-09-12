@@ -35,6 +35,18 @@ export interface ExitSignal {
   rsiSma?: number;
 }
 
+export interface TrailingLevelNotification {
+  position: Position;
+  symbol: string;
+  currentPrice: number;
+  pnlPercentage: number;
+  pnlAmount: number;
+  newLevel: number;
+  previousLevel: number;
+  lockInPrice: number;
+  levelDescription: string;
+}
+
 export interface PositionMonitorResult {
   symbol: string;
   status: 'HOLD' | 'EXIT';
@@ -44,6 +56,8 @@ export interface PositionMonitorResult {
   exitSignal?: ExitSignal;
   trailingStopLevel?: number;
   nextTargetLevel?: number;
+  trailingLevelChanged?: boolean;
+  previousTrailingLevel?: number;
 }
 
 /**
@@ -78,6 +92,7 @@ class ExitMonitoringService {
     exitSignals: ExitSignal[];
     updatedPositions: number;
     monitoringResults: PositionMonitorResult[];
+    trailingLevelNotifications: TrailingLevelNotification[];
     timestamp: string;
   }> {
     console.log('🔍 Starting position monitoring...');
@@ -88,6 +103,7 @@ class ExitMonitoringService {
 
     const exitSignals: ExitSignal[] = [];
     const monitoringResults: PositionMonitorResult[] = [];
+    const trailingLevelNotifications: TrailingLevelNotification[] = [];
     let updatedPositions = 0;
 
     // Monitor each position
@@ -101,6 +117,36 @@ class ExitMonitoringService {
         // Update position PnL
         await this.positionManager.updatePositionPnL(position.symbol, result.currentPrice);
         updatedPositions++;
+
+        // Check for trailing level changes and update
+        if (result.trailingStopLevel !== undefined) {
+          const levelChanged = await this.positionManager.updateTrailingLevel(
+            position.symbol, 
+            result.trailingStopLevel
+          );
+          
+          if (levelChanged && result.trailingStopLevel > 0) {
+            // Create trailing level notification
+            const levelConfig = TRAILING_STOPS.find(l => l.level === result.trailingStopLevel);
+            if (levelConfig) {
+              const lockInPrice = position.entry_price * (1 + levelConfig.lockIn / 100);
+              
+              trailingLevelNotifications.push({
+                position,
+                symbol: position.symbol,
+                currentPrice: result.currentPrice,
+                pnlPercentage: result.pnlPercentage,
+                pnlAmount: result.pnlAmount,
+                newLevel: result.trailingStopLevel,
+                previousLevel: result.previousTrailingLevel || 0,
+                lockInPrice,
+                levelDescription: levelConfig.description
+              });
+              
+              console.log(`🎯 TRAILING LEVEL ACTIVATED: ${position.symbol} reached Level ${result.trailingStopLevel} (${levelConfig.description})`);
+            }
+          }
+        }
 
         // Check for exit conditions
         if (result.status === 'EXIT' && result.exitSignal) {
@@ -117,11 +163,17 @@ class ExitMonitoringService {
       }
     }
 
-    // Send WhatsApp notifications only if there are exit signals
+    // Send WhatsApp notifications for trailing level activations
+    if (trailingLevelNotifications.length > 0 && sendWhatsApp) {
+      console.log(`📱 Sending trailing level notifications for ${trailingLevelNotifications.length} positions...`);
+      await this.sendTrailingLevelNotifications(trailingLevelNotifications);
+    }
+
+    // Send WhatsApp notifications for exit signals
     if (exitSignals.length > 0 && sendWhatsApp) {
       console.log(`📱 Sending exit notifications for ${exitSignals.length} positions...`);
       await this.sendExitNotifications(exitSignals);
-    } else if (exitSignals.length === 0) {
+    } else if (exitSignals.length === 0 && trailingLevelNotifications.length === 0) {
       console.log(`📊 No exit conditions met - all ${activePositions.length} positions holding`);
     }
 
@@ -130,6 +182,7 @@ class ExitMonitoringService {
       exitSignals,
       updatedPositions,
       monitoringResults,
+      trailingLevelNotifications,
       timestamp: new Date().toISOString()
     };
   }
@@ -232,7 +285,8 @@ class ExitMonitoringService {
       pnlAmount,
       pnlPercentage,
       trailingStopLevel: trailingStopResult.currentLevel,
-      nextTargetLevel: trailingStopResult.nextLevel
+      nextTargetLevel: trailingStopResult.nextLevel,
+      previousTrailingLevel: position.trailing_level || 0
     };
   }
 
@@ -361,6 +415,40 @@ class ExitMonitoringService {
           
         } catch (error) {
           console.log(`❌ Exit WhatsApp error for ${recipient.name}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+      }
+    }
+  }
+
+  /**
+   * Send WhatsApp trailing level notifications
+   */
+  private async sendTrailingLevelNotifications(notifications: TrailingLevelNotification[]): Promise<void> {
+    for (const notification of notifications) {
+      // Send to each recipient
+      for (const recipient of this.NOTIFICATION_RECIPIENTS) {
+        try {
+          console.log(`📱 Sending ${notification.symbol} trailing level notification to ${recipient.name}...`);
+          
+          const result = await this.whatsappService.sendMessage({
+            phoneNumber: recipient.phone,
+            message1: `Hi ${recipient.name}! Trailing level activated 🎯`,
+            message2: `${notification.symbol}: ₹${notification.currentPrice} - LEVEL ${notification.newLevel}`,
+            message3: `${notification.levelDescription} | Profits locked at ₹${notification.lockInPrice.toFixed(2)}`,
+            message4: `PnL: +${notification.pnlPercentage.toFixed(2)}% (₹${notification.pnlAmount.toFixed(2)}) | ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' })} IST`
+          });
+
+          if (result.success) {
+            console.log(`✅ Trailing level WhatsApp sent to ${recipient.name}`);
+          } else {
+            console.log(`❌ Trailing level WhatsApp failed to ${recipient.name}: ${result.error}`);
+          }
+          
+          // Delay between messages
+          await this.delay(1500);
+          
+        } catch (error) {
+          console.log(`❌ Trailing level WhatsApp error for ${recipient.name}: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
       }
     }

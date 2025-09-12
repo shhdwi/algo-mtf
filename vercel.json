@@ -17,8 +17,24 @@
     },
     "src/app/api/enhanced-scanner/route.ts": {
       "maxDuration": 600
+    },
+    "src/app/api/cron/daily-scan/route.ts": {
+      "maxDuration": 800
+    },
+    "src/app/api/cron/monitor-positions/route.ts": {
+      "maxDuration": 300
     }
   },
+  "crons": [
+    {
+      "path": "/api/cron/daily-scan",
+      "schedule": "15 15 * * 1-5"
+    },
+    {
+      "path": "/api/cron/monitor-positions", 
+      "schedule": "*/5 9-15 * * 1-5"
+    }
+  ],
   "regions": ["bom1"],
   "env": {
     "NODE_ENV": "production"

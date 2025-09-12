@@ -19,6 +19,7 @@ export async function POST(request: NextRequest) {
       exit_summary: {
         total_positions_monitored: monitoringResults.totalPositions,
         exit_signals_found: monitoringResults.exitSignals.length,
+        trailing_level_activations: monitoringResults.trailingLevelNotifications.length,
         positions_updated: monitoringResults.updatedPositions,
         whatsapp_notifications: sendWhatsApp ? 'enabled' : 'disabled'
       },
@@ -29,6 +30,16 @@ export async function POST(request: NextRequest) {
         current_price: signal.currentPrice,
         pnl_percentage: signal.pnlPercentage,
         pnl_amount: signal.pnlAmount
+      })),
+      trailing_level_notifications: monitoringResults.trailingLevelNotifications.map(notification => ({
+        symbol: notification.symbol,
+        new_level: notification.newLevel,
+        previous_level: notification.previousLevel,
+        level_description: notification.levelDescription,
+        current_price: notification.currentPrice,
+        pnl_percentage: notification.pnlPercentage,
+        pnl_amount: notification.pnlAmount,
+        lock_in_price: notification.lockInPrice
       })),
       position_status: monitoringResults.monitoringResults.map(result => ({
         symbol: result.symbol,

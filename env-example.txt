@@ -14,3 +14,6 @@ WHATSAPP_ACCESS_TOKEN=your_whatsapp_access_token
 # Supabase Configuration
 SUPABASE_URL=https://yvvqgxqxmsccswmuwvdj.supabase.co
 SUPABASE_ANON_KEY=your_supabase_anon_key
+
+# Vercel Cron Configuration
+CRON_SECRET=your_secure_cron_secret_key
