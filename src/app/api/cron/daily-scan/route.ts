@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import UltimateScannerService from '@/services/ultimateScannerService';
 
 export async function GET(request: NextRequest) {
   try {
@@ -35,41 +36,26 @@ export async function GET(request: NextRequest) {
 
     console.log('🕒 Cron: Starting daily scan at 3:15 PM IST...');
     
-    // Call the daily scan API internally
-    const baseUrl = process.env.VERCEL_URL 
-      ? `https://${process.env.VERCEL_URL}` 
-      : 'https://algo-mtf.vercel.app';
+    // Call the ultimate scanner service directly
+    const scanner = new UltimateScannerService();
+    const scanResults = await scanner.ultimateScanWithPositionManagement('NSE', true);
     
-    const response = await fetch(`${baseUrl}/api/daily-scan`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
+    console.log('✅ Cron: Daily scan completed successfully');
+    
+    return NextResponse.json({
+      success: true,
+      message: 'Daily scan executed successfully',
+      scan_results: {
+        summary: scanResults.summary,
+        position_management: scanResults.position_management,
+        entry_signals: scanResults.results.filter(r => r.signal === 'ENTRY').map(r => ({
+          symbol: r.symbol,
+          current_price: r.current_price,
+          reasoning: r.reasoning
+        }))
       },
-      body: JSON.stringify({
-        exchange: 'NSE',
-        send_whatsapp: true
-      })
+      timestamp: istTime.toISOString()
     });
-
-    const result = await response.json();
-    
-    if (response.ok) {
-      console.log('✅ Cron: Daily scan completed successfully');
-      return NextResponse.json({
-        success: true,
-        message: 'Daily scan executed successfully',
-        scan_results: result,
-        timestamp: istTime.toISOString()
-      });
-    } else {
-      console.error('❌ Cron: Daily scan failed:', result);
-      return NextResponse.json({
-        success: false,
-        message: 'Daily scan failed',
-        error: result,
-        timestamp: istTime.toISOString()
-      }, { status: 500 });
-    }
 
   } catch (error) {
     console.error('❌ Cron: Daily scan error:', error);

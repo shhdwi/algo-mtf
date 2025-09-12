@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import ExitMonitoringService from '@/services/exitMonitoringService';
 
 export async function GET(request: NextRequest) {
   try {
@@ -39,49 +40,26 @@ export async function GET(request: NextRequest) {
 
     console.log('🕒 Cron: Starting position monitoring...');
     
-    // Call the monitor positions API internally
-    const baseUrl = process.env.VERCEL_URL 
-      ? `https://${process.env.VERCEL_URL}` 
-      : 'https://algo-mtf.vercel.app';
+    // Call the exit monitoring service directly
+    const exitMonitor = new ExitMonitoringService();
+    const monitoringResults = await exitMonitor.monitorActivePositions(true);
     
-    const response = await fetch(`${baseUrl}/api/monitor-positions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
+    const exitCount = monitoringResults.exitSignals?.length || 0;
+    const trailingCount = monitoringResults.trailingLevelNotifications?.length || 0;
+    
+    console.log(`✅ Cron: Position monitoring completed - ${exitCount} exits, ${trailingCount} trailing levels`);
+    
+    return NextResponse.json({
+      success: true,
+      message: 'Position monitoring executed successfully',
+      summary: {
+        positions_monitored: monitoringResults.totalPositions || 0,
+        exit_signals: exitCount,
+        trailing_notifications: trailingCount
       },
-      body: JSON.stringify({
-        send_whatsapp: true
-      })
+      monitoring_results: monitoringResults,
+      timestamp: istTime.toISOString()
     });
-
-    const result = await response.json();
-    
-    if (response.ok) {
-      const exitCount = result.monitoring_results?.exitSignals?.length || 0;
-      const trailingCount = result.monitoring_results?.trailingLevelNotifications?.length || 0;
-      
-      console.log(`✅ Cron: Position monitoring completed - ${exitCount} exits, ${trailingCount} trailing levels`);
-      
-      return NextResponse.json({
-        success: true,
-        message: 'Position monitoring executed successfully',
-        summary: {
-          positions_monitored: result.monitoring_results?.totalPositions || 0,
-          exit_signals: exitCount,
-          trailing_notifications: trailingCount
-        },
-        monitoring_results: result,
-        timestamp: istTime.toISOString()
-      });
-    } else {
-      console.error('❌ Cron: Position monitoring failed:', result);
-      return NextResponse.json({
-        success: false,
-        message: 'Position monitoring failed',
-        error: result,
-        timestamp: istTime.toISOString()
-      }, { status: 500 });
-    }
 
   } catch (error) {
     console.error('❌ Cron: Position monitoring error:', error);
