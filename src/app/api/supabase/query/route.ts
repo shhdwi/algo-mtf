@@ -14,38 +14,37 @@ export async function POST(request: NextRequest) {
     
     if (query) {
       // Execute raw SQL query
-      result = await supabase.rpc('exec_sql', { sql_query: query });
+      const { data: queryData, error } = await supabase.rpc('exec_sql', { sql: query });
+      result = { data: queryData, error: error?.message || null };
     } else if (table && operation) {
       // Execute table operations
       switch (operation) {
         case 'select':
-          result = await supabase.from(table).select('*');
+          const { data: selectData, error: selectError } = await supabase
+            .from(table)
+            .select('*');
+          result = { data: selectData, error: selectError?.message || null };
           break;
+          
         case 'insert':
-          result = await supabase.from(table).insert(data);
+          const { data: insertData, error: insertError } = await supabase
+            .from(table)
+            .insert(data);
+          result = { data: insertData, error: insertError?.message || null };
           break;
-        case 'update':
-          result = await supabase.from(table).update(data.values).eq(data.where.column, data.where.value);
-          break;
-        case 'delete':
-          result = await supabase.from(table).delete().eq(data.where.column, data.where.value);
-          break;
+          
         default:
-          throw new Error(`Unsupported operation: ${operation}`);
+          result = { data: null, error: 'Unsupported operation' };
       }
     } else {
-      throw new Error('Either query or table+operation must be provided');
+      result = { data: null, error: 'Invalid request format' };
     }
     
-    return NextResponse.json({
-      data: result.data,
-      error: result.error?.message || null,
-      success: !result.error
-    });
+    return NextResponse.json(result);
   } catch (error) {
     console.error('Supabase query error:', error);
     return NextResponse.json(
-      { data: null, error: error instanceof Error ? error.message : 'Database error', success: false },
+      { data: null, error: error instanceof Error ? error.message : 'Database error' },
       { status: 500 }
     );
   }
