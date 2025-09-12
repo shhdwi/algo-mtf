@@ -28,11 +28,11 @@
   "crons": [
     {
       "path": "/api/cron/daily-scan",
-      "schedule": "15 15 * * 1-5"
+      "schedule": "45 9 * * 1-5"
     },
     {
       "path": "/api/cron/monitor-positions", 
-      "schedule": "*/5 9-15 * * 1-5"
+      "schedule": "*/5 3-10 * * 1-5"
     }
   ],
   "regions": ["bom1"],
