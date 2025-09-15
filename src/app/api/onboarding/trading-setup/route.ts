@@ -118,14 +118,62 @@ export async function POST(request: NextRequest) {
     // Validate API credentials by testing login with Lemon API
     try {
       console.log('🔍 Validating API credentials with Lemon API...');
+      console.log('📋 Testing with:', { 
+        client_id, 
+        public_key_length: public_key.length,
+        private_key_length: private_key.length,
+        public_key_preview: public_key.substring(0, 20) + '...',
+        private_key_preview: private_key.substring(0, 20) + '...'
+      });
       
       // Test the credentials by attempting to generate an access token
       const epochTime = Date.now().toString();
       const message = client_id + epochTime;
       
-      // Generate signature using the private key (simplified for testing)
+      console.log('🔐 Signature generation:', { epochTime, message_length: message.length });
+      
+      // Generate Ed25519 signature (same as existing working system)
       const crypto = require('crypto');
-      const signature = crypto.createHmac('sha256', private_key).update(message).digest('hex');
+      
+      try {
+        // Convert private key from hex to bytes (32 bytes for Ed25519)
+        const privateKeyBytes = Buffer.from(private_key, 'hex');
+        
+        if (privateKeyBytes.length !== 32) {
+          throw new Error(`Invalid private key length: expected 32 bytes, got ${privateKeyBytes.length}`);
+        }
+        
+        // Create Ed25519 private key in PEM format
+        const privateKeyInfo = Buffer.concat([
+          Buffer.from([0x30, 0x2e]), // SEQUENCE, length 46
+          Buffer.from([0x02, 0x01, 0x00]), // INTEGER 0 (version)
+          Buffer.from([0x30, 0x05]), // SEQUENCE, length 5
+          Buffer.from([0x06, 0x03, 0x2b, 0x65, 0x70]), // OID 1.3.101.112 (Ed25519)
+          Buffer.from([0x04, 0x22]), // OCTET STRING, length 34
+          Buffer.from([0x04, 0x20]), // OCTET STRING, length 32 (inner)
+          privateKeyBytes // 32 bytes of private key
+        ]);
+        
+        const base64Key = privateKeyInfo.toString('base64');
+        const base64Lines = base64Key.match(/.{1,64}/g) || [base64Key];
+        const pemKey = `-----BEGIN PRIVATE KEY-----\n${base64Lines.join('\n')}\n-----END PRIVATE KEY-----`;
+        
+        const keyObject = crypto.createPrivateKey(pemKey);
+        const messageBytes = Buffer.from(message, 'utf-8');
+        const signatureBuffer = crypto.sign(null, messageBytes, keyObject);
+        const signature = signatureBuffer.toString('hex');
+        
+        console.log('🔐 Ed25519 signature generated successfully');
+        
+      } catch (sigError) {
+        console.error('❌ Signature generation failed:', sigError);
+        return NextResponse.json({
+          success: false,
+          error: `Invalid private key format: ${sigError instanceof Error ? sigError.message : 'Unknown error'}`
+        }, { status: 400 });
+      }
+      
+      console.log('📡 Making request to Lemon API...');
       
       const testResponse = await fetch('https://cs-prod.lemonn.co.in/api-trading/api/v1/generate_access_token', {
         method: 'POST',
@@ -138,22 +186,28 @@ export async function POST(request: NextRequest) {
         body: JSON.stringify({ client_id })
       });
 
+      console.log('📊 Lemon API Response Status:', testResponse.status);
+      
       const testResult = await testResponse.json();
+      console.log('📊 Lemon API Response Data:', testResult);
       
       if (testResult.status !== 'success') {
+        console.error('❌ API validation failed:', testResult);
         return NextResponse.json({
           success: false,
-          error: `Invalid API credentials: ${testResult.message || 'Authentication failed with Lemon API'}`
+          error: `API validation failed: ${testResult.message || testResult.error_code || 'Authentication failed'}`,
+          lemon_response: testResult
         }, { status: 400 });
       }
       
       console.log('✅ API credentials validated successfully');
       
     } catch (apiError) {
-      console.error('API validation error:', apiError);
+      console.error('❌ API validation error:', apiError);
       return NextResponse.json({
         success: false,
-        error: 'Failed to validate API credentials with Lemon API. Please check your keys.'
+        error: `API validation error: ${apiError instanceof Error ? apiError.message : 'Unknown error'}`,
+        debug_info: 'Check server logs for detailed error information'
       }, { status: 400 });
     }
 

@@ -71,17 +71,61 @@ class LemonTradingService {
   }
 
   /**
-   * Generate Ed25519 signature for Lemon API authentication
+   * Generate Ed25519 signature for Lemon API authentication (proper implementation)
    */
   private generateSignature(clientId: string, privateKey: string): { epochTime: string; signature: string } {
     const epochTime = Date.now().toString();
     const message = clientId + epochTime;
     
-    // For production, implement proper Ed25519 signature
-    // For now, return a placeholder
-    const signature = crypto.createHmac('sha256', privateKey).update(message).digest('hex');
+    try {
+      // Convert private key from hex to bytes (32 bytes for Ed25519)
+      const privateKeyBytes = Buffer.from(privateKey, 'hex');
+      
+      if (privateKeyBytes.length !== 32) {
+        throw new Error(`Invalid private key length: expected 32 bytes, got ${privateKeyBytes.length}`);
+      }
+      
+      // Create Ed25519 private key in PEM format
+      const privateKeyPem = this.createEd25519PrivateKeyPEM(privateKeyBytes);
+      const keyObject = crypto.createPrivateKey(privateKeyPem);
+      
+      // Sign the message (UTF-8 encoded)
+      const messageBytes = Buffer.from(message, 'utf-8');
+      const signatureBuffer = crypto.sign(null, messageBytes, keyObject);
+      const signature = signatureBuffer.toString('hex');
+      
+      return { epochTime, signature };
+      
+    } catch (error) {
+      console.error('Signature generation error:', error);
+      throw new Error(`Failed to generate Ed25519 signature: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Create Ed25519 private key in PEM format from raw bytes
+   */
+  private createEd25519PrivateKeyPEM(privateKeyBytes: Buffer): string {
+    if (privateKeyBytes.length !== 32) {
+      throw new Error('Ed25519 private key must be 32 bytes');
+    }
     
-    return { epochTime, signature };
+    // Ed25519 private key ASN.1 structure
+    const privateKeyInfo = Buffer.concat([
+      Buffer.from([0x30, 0x2e]), // SEQUENCE, length 46
+      Buffer.from([0x02, 0x01, 0x00]), // INTEGER 0 (version)
+      Buffer.from([0x30, 0x05]), // SEQUENCE, length 5
+      Buffer.from([0x06, 0x03, 0x2b, 0x65, 0x70]), // OID 1.3.101.112 (Ed25519)
+      Buffer.from([0x04, 0x22]), // OCTET STRING, length 34
+      Buffer.from([0x04, 0x20]), // OCTET STRING, length 32 (inner)
+      privateKeyBytes // 32 bytes of private key
+    ]);
+    
+    const base64Key = privateKeyInfo.toString('base64');
+    const base64Lines = base64Key.match(/.{1,64}/g) || [base64Key];
+    const pemKey = `-----BEGIN PRIVATE KEY-----\n${base64Lines.join('\n')}\n-----END PRIVATE KEY-----`;
+    
+    return pemKey;
   }
 
   /**
