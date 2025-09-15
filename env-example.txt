@@ -17,3 +17,7 @@ SUPABASE_ANON_KEY=your_supabase_anon_key
 
 # Vercel Cron Configuration
 CRON_SECRET=your_secure_cron_secret_key
+
+# Real Trading Security
+JWT_SECRET=your_jwt_secret_for_user_authentication
+ENCRYPTION_KEY=your_encryption_key_for_api_credentials

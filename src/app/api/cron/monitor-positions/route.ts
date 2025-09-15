@@ -40,24 +40,37 @@ export async function GET(request: NextRequest) {
 
     console.log('🕒 Cron: Starting position monitoring...');
     
-    // Call the exit monitoring service directly
+    // Monitor paper trading positions (existing system)
     const exitMonitor = new ExitMonitoringService();
     const monitoringResults = await exitMonitor.monitorActivePositions(true);
     
+    // Monitor real trading positions for exits
+    const realTradingResponse = await fetch(`${process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://algo-mtf.vercel.app'}/api/real-trading/monitor-exits`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ send_whatsapp: true })
+    });
+    
+    const realTradingResults = await realTradingResponse.json();
+    
     const exitCount = monitoringResults.exitSignals?.length || 0;
     const trailingCount = monitoringResults.trailingLevelNotifications?.length || 0;
+    const realExitCount = realTradingResults.success ? realTradingResults.monitoring_results?.exits_executed || 0 : 0;
     
-    console.log(`✅ Cron: Position monitoring completed - ${exitCount} exits, ${trailingCount} trailing levels`);
+    console.log(`✅ Cron: Position monitoring completed - Paper: ${exitCount} exits, ${trailingCount} trailing levels | Real: ${realExitCount} exits`);
     
     return NextResponse.json({
       success: true,
       message: 'Position monitoring executed successfully',
       summary: {
-        positions_monitored: monitoringResults.totalPositions || 0,
-        exit_signals: exitCount,
-        trailing_notifications: trailingCount
+        paper_positions_monitored: monitoringResults.totalPositions || 0,
+        paper_exit_signals: exitCount,
+        paper_trailing_notifications: trailingCount,
+        real_positions_monitored: realTradingResults.success ? realTradingResults.monitoring_results?.positions_monitored || 0 : 0,
+        real_exits_executed: realExitCount
       },
-      monitoring_results: monitoringResults,
+      paper_trading_results: monitoringResults,
+      real_trading_results: realTradingResults.success ? realTradingResults.monitoring_results : { error: realTradingResults.error },
       timestamp: istTime.toISOString()
     });
 

@@ -36,11 +36,20 @@ export async function GET(request: NextRequest) {
 
     console.log('🕒 Cron: Starting daily scan at 3:15 PM IST...');
     
-    // Call the ultimate scanner service directly
+    // Execute paper trading (existing system)
     const scanner = new UltimateScannerService();
     const scanResults = await scanner.ultimateScanWithPositionManagement('NSE', true);
     
-    console.log('✅ Cron: Daily scan completed successfully');
+    // Execute real trading for eligible users
+    const realTradingResponse = await fetch(`${process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://algo-mtf.vercel.app'}/api/real-trading/execute-signals`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ exchange: 'NSE', send_whatsapp: true })
+    });
+    
+    const realTradingResults = await realTradingResponse.json();
+    
+    console.log('✅ Cron: Daily scan completed successfully (paper + real trading)');
     
     return NextResponse.json({
       success: true,
@@ -54,6 +63,7 @@ export async function GET(request: NextRequest) {
           reasoning: r.reasoning
         }))
       },
+      real_trading_results: realTradingResults.success ? realTradingResults.real_trading_results : { error: realTradingResults.error },
       timestamp: istTime.toISOString()
     });
 
