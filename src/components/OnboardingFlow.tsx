@@ -180,54 +180,64 @@ export default function OnboardingFlow() {
             <h2 className="text-2xl font-bold text-slate-900">Create Your Account</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Full Name</label>
+                <label className="block text-sm font-semibold text-slate-800 mb-3">Full Name</label>
                 <input
                   type="text"
                   value={formData.full_name}
                   onChange={(e) => setFormData({...formData, full_name: e.target.value})}
-                  className="w-full px-4 py-3 border border-emerald-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  className="w-full px-5 py-4 border-2 border-slate-200 rounded-xl bg-white/80 backdrop-blur-sm focus:ring-3 focus:ring-emerald-200 focus:border-emerald-400 transition-all duration-200 text-slate-900 placeholder-slate-400 shadow-sm hover:border-emerald-300"
                   placeholder="Enter your full name"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Phone Number</label>
-                <input
-                  type="tel"
-                  value={formData.phone_number}
-                  onChange={(e) => setFormData({...formData, phone_number: e.target.value})}
-                  className="w-full px-4 py-3 border border-emerald-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                  placeholder="10-digit mobile number"
-                />
+                <label className="block text-sm font-semibold text-slate-800 mb-3">Phone Number</label>
+                <div className="relative">
+                  <div className="absolute left-5 top-1/2 transform -translate-y-1/2 text-slate-600 font-medium">+91</div>
+                  <input
+                    type="tel"
+                    value={formData.phone_number}
+                    onChange={(e) => setFormData({...formData, phone_number: e.target.value.replace(/\D/g, '').slice(0, 10)})}
+                    className="w-full pl-16 pr-5 py-4 border-2 border-slate-200 rounded-xl bg-white/80 backdrop-blur-sm focus:ring-3 focus:ring-emerald-200 focus:border-emerald-400 transition-all duration-200 text-slate-900 placeholder-slate-400 shadow-sm hover:border-emerald-300 text-lg font-medium"
+                    placeholder="9876543210"
+                    maxLength={10}
+                  />
+                </div>
+                <p className="text-xs text-emerald-600 mt-2 font-medium">
+                  📱 WhatsApp trading alerts will be sent to +91{formData.phone_number || 'XXXXXXXXXX'}
+                </p>
               </div>
               <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-slate-700 mb-2">Email Address</label>
+                <label className="block text-sm font-semibold text-slate-800 mb-3">Email Address</label>
                 <input
                   type="email"
                   value={formData.email}
                   onChange={(e) => setFormData({...formData, email: e.target.value})}
-                  className="w-full px-4 py-3 border border-emerald-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  className="w-full px-5 py-4 border-2 border-slate-200 rounded-xl bg-white/80 backdrop-blur-sm focus:ring-3 focus:ring-emerald-200 focus:border-emerald-400 transition-all duration-200 text-slate-900 placeholder-slate-400 shadow-sm hover:border-emerald-300"
                   placeholder="your.email@example.com"
                 />
+                <p className="text-xs text-slate-500 mt-2">Used for login and important trading updates</p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Password</label>
+                <label className="block text-sm font-semibold text-slate-800 mb-3">Password</label>
                 <input
                   type="password"
                   value={formData.password}
                   onChange={(e) => setFormData({...formData, password: e.target.value})}
-                  className="w-full px-4 py-3 border border-emerald-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  className="w-full px-5 py-4 border-2 border-slate-200 rounded-xl bg-white/80 backdrop-blur-sm focus:ring-3 focus:ring-emerald-200 focus:border-emerald-400 transition-all duration-200 text-slate-900 placeholder-slate-400 shadow-sm hover:border-emerald-300"
                   placeholder="Minimum 8 characters"
                 />
+                <p className="text-xs text-slate-500 mt-2">Strong password recommended for security</p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Confirm Password</label>
+                <label className="block text-sm font-semibold text-slate-800 mb-3">Confirm Password</label>
                 <input
                   type="password"
                   value={formData.confirmPassword}
                   onChange={(e) => setFormData({...formData, confirmPassword: e.target.value})}
-                  className="w-full px-4 py-3 border border-emerald-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  className="w-full px-5 py-4 border-2 border-slate-200 rounded-xl bg-white/80 backdrop-blur-sm focus:ring-3 focus:ring-emerald-200 focus:border-emerald-400 transition-all duration-200 text-slate-900 placeholder-slate-400 shadow-sm hover:border-emerald-300"
                   placeholder="Confirm your password"
                 />
+                <p className="text-xs text-slate-500 mt-2">Must match the password above</p>
               </div>
             </div>
           </div>
@@ -239,56 +249,56 @@ export default function OnboardingFlow() {
             <h2 className="text-2xl font-bold text-slate-900">Trading Capital & Risk Settings</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Total Trading Capital</label>
+                <label className="block text-sm font-semibold text-slate-800 mb-3">Total Trading Capital</label>
                 <input
                   type="number"
                   value={formData.total_capital}
                   onChange={(e) => setFormData({...formData, total_capital: e.target.value})}
-                  className="w-full px-4 py-3 border border-emerald-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  className="w-full px-5 py-4 border-2 border-slate-200 rounded-xl bg-white/80 backdrop-blur-sm focus:ring-3 focus:ring-emerald-200 focus:border-emerald-400 transition-all duration-200 text-slate-900 placeholder-slate-400 shadow-sm hover:border-emerald-300 text-lg font-medium"
                   placeholder="500000"
                 />
-                <p className="text-sm text-slate-600 mt-1">
-                  {formData.total_capital ? formatCurrency(formData.total_capital) : 'Enter amount in rupees'}
+                <p className="text-sm font-medium text-emerald-600 mt-2">
+                  {formData.total_capital ? formatCurrency(formData.total_capital) : 'Enter amount in rupees (minimum ₹10,000)'}
                 </p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Allocation per Trade (%)</label>
+                <label className="block text-sm font-semibold text-slate-800 mb-3">Allocation per Trade (%)</label>
                 <input
                   type="number"
                   min="1"
                   max="50"
                   value={formData.allocation_percentage}
                   onChange={(e) => setFormData({...formData, allocation_percentage: e.target.value})}
-                  className="w-full px-4 py-3 border border-emerald-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  className="w-full px-5 py-4 border-2 border-slate-200 rounded-xl bg-white/80 backdrop-blur-sm focus:ring-3 focus:ring-emerald-200 focus:border-emerald-400 transition-all duration-200 text-slate-900 placeholder-slate-400 shadow-sm hover:border-emerald-300 text-lg font-medium"
                   placeholder="10"
                 />
-                <p className="text-sm text-slate-600 mt-1">
-                  {calculateAllocationAmount() ? `${formatCurrency(calculateAllocationAmount().toString())} per trade` : 'Amount per position'}
+                <p className="text-sm font-medium text-emerald-600 mt-2">
+                  {calculateAllocationAmount() ? `${formatCurrency(calculateAllocationAmount().toString())} per trade` : 'Percentage of capital per position (1-50%)'}
                 </p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Daily Loss Limit (%)</label>
+                <label className="block text-sm font-semibold text-slate-800 mb-3">Daily Loss Limit (%)</label>
                 <input
                   type="number"
                   min="1"
                   max="20"
                   value={formData.daily_loss_limit_percentage}
                   onChange={(e) => setFormData({...formData, daily_loss_limit_percentage: e.target.value})}
-                  className="w-full px-4 py-3 border border-emerald-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  className="w-full px-5 py-4 border-2 border-slate-200 rounded-xl bg-white/80 backdrop-blur-sm focus:ring-3 focus:ring-rose-200 focus:border-rose-400 transition-all duration-200 text-slate-900 placeholder-slate-400 shadow-sm hover:border-rose-300 text-lg font-medium"
                 />
-                <p className="text-sm text-slate-600 mt-1">Stop trading if daily loss exceeds this %</p>
+                <p className="text-sm font-medium text-rose-600 mt-2">Stop trading if daily loss exceeds this % of total capital</p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Stop Loss per Trade (%)</label>
+                <label className="block text-sm font-semibold text-slate-800 mb-3">Stop Loss per Trade (%)</label>
                 <input
                   type="number"
                   min="1"
                   max="10"
                   value={formData.stop_loss_percentage}
                   onChange={(e) => setFormData({...formData, stop_loss_percentage: e.target.value})}
-                  className="w-full px-4 py-3 border border-emerald-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  className="w-full px-5 py-4 border-2 border-slate-200 rounded-xl bg-white/80 backdrop-blur-sm focus:ring-3 focus:ring-rose-200 focus:border-rose-400 transition-all duration-200 text-slate-900 placeholder-slate-400 shadow-sm hover:border-rose-300 text-lg font-medium"
                 />
-                <p className="text-sm text-slate-600 mt-1">Maximum loss per position</p>
+                <p className="text-sm font-medium text-rose-600 mt-2">Maximum loss per individual position</p>
               </div>
             </div>
           </div>
@@ -298,45 +308,55 @@ export default function OnboardingFlow() {
         return (
           <div className="space-y-6">
             <h2 className="text-2xl font-bold text-slate-900">API Configuration</h2>
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 gap-6">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Client ID</label>
+                  <label className="block text-sm font-semibold text-slate-800 mb-3">Client ID</label>
                   <input
                     type="text"
                     value={formData.client_id}
                     onChange={(e) => setFormData({...formData, client_id: e.target.value})}
-                    className="w-full px-4 py-3 border border-emerald-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                    className="w-full px-5 py-4 border-2 border-slate-200 rounded-xl bg-white/80 backdrop-blur-sm focus:ring-3 focus:ring-cyan-200 focus:border-cyan-400 transition-all duration-200 text-slate-900 placeholder-slate-400 shadow-sm hover:border-cyan-300 font-mono text-lg"
                     placeholder="CLIENT123"
                   />
+                  <p className="text-xs text-slate-500 mt-2">Your unique client identifier from Lemon API</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Public Key</label>
+                  <label className="block text-sm font-semibold text-slate-800 mb-3">Public Key</label>
                   <input
                     type="text"
                     value={formData.public_key}
                     onChange={(e) => setFormData({...formData, public_key: e.target.value})}
-                    className="w-full px-4 py-3 border border-emerald-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                    placeholder="pk_live_..."
+                    className="w-full px-5 py-4 border-2 border-slate-200 rounded-xl bg-white/80 backdrop-blur-sm focus:ring-3 focus:ring-cyan-200 focus:border-cyan-400 transition-all duration-200 text-slate-900 placeholder-slate-400 shadow-sm hover:border-cyan-300 font-mono"
+                    placeholder="pk_live_1234567890abcdef..."
                   />
+                  <p className="text-xs text-slate-500 mt-2">Your Lemon API public key (starts with pk_live_)</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Private Key</label>
+                  <label className="block text-sm font-semibold text-slate-800 mb-3">Private Key</label>
                   <input
                     type="password"
                     value={formData.private_key}
                     onChange={(e) => setFormData({...formData, private_key: e.target.value})}
-                    className="w-full px-4 py-3 border border-emerald-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                    placeholder="sk_live_..."
+                    className="w-full px-5 py-4 border-2 border-slate-200 rounded-xl bg-white/80 backdrop-blur-sm focus:ring-3 focus:ring-cyan-200 focus:border-cyan-400 transition-all duration-200 text-slate-900 placeholder-slate-400 shadow-sm hover:border-cyan-300 font-mono"
+                    placeholder="sk_live_1234567890abcdef..."
                   />
+                  <p className="text-xs text-slate-500 mt-2">Your Lemon API private key (starts with sk_live_) - kept secure and encrypted</p>
                 </div>
               </div>
-              <div className="bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-xl p-6">
-                <h3 className="font-semibold text-slate-900 mb-2">🔐 Security Notice</h3>
-                <p className="text-sm text-slate-600">
-                  Your API keys are encrypted and stored securely. We never store your private key in plain text.
-                  Make sure you have your Lemon API keys ready from your broker account.
-                </p>
+              <div className="bg-gradient-to-r from-cyan-50 via-blue-50 to-indigo-50 border-2 border-cyan-200 rounded-2xl p-6 shadow-lg">
+                <h3 className="font-bold text-slate-900 mb-3 text-lg">🔐 Security & Privacy</h3>
+                <div className="space-y-2 text-sm text-slate-700">
+                  <p>✅ <strong>Encrypted Storage:</strong> All API keys are encrypted using AES-256 encryption</p>
+                  <p>✅ <strong>Secure Transmission:</strong> Keys are never sent in plain text</p>
+                  <p>✅ <strong>Access Control:</strong> Only you can access your trading account</p>
+                  <p>✅ <strong>No Plain Text:</strong> Private keys are never stored unencrypted</p>
+                </div>
+                <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                  <p className="text-xs text-amber-800">
+                    <strong>📋 Where to find:</strong> Get your Lemon API keys from your broker's developer portal or API section
+                  </p>
+                </div>
               </div>
             </div>
           </div>
@@ -348,38 +368,46 @@ export default function OnboardingFlow() {
             <h2 className="text-2xl font-bold text-slate-900">Trading Settings</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Maximum Concurrent Positions</label>
+                <label className="block text-sm font-semibold text-slate-800 mb-3">Maximum Concurrent Positions</label>
                 <input
                   type="number"
                   min="1"
                   max="20"
                   value={formData.max_concurrent_positions}
                   onChange={(e) => setFormData({...formData, max_concurrent_positions: e.target.value})}
-                  className="w-full px-4 py-3 border border-emerald-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  className="w-full px-5 py-4 border-2 border-slate-200 rounded-xl bg-white/80 backdrop-blur-sm focus:ring-3 focus:ring-emerald-200 focus:border-emerald-400 transition-all duration-200 text-slate-900 placeholder-slate-400 shadow-sm hover:border-emerald-300 text-lg font-medium"
                 />
-                <p className="text-sm text-slate-600 mt-1">Maximum number of positions at one time</p>
+                <p className="text-sm font-medium text-emerald-600 mt-2">Maximum number of positions held simultaneously</p>
               </div>
             </div>
             
-            <div className="bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-xl p-6">
-              <h3 className="font-semibold text-slate-900 mb-4">📊 Trading Summary</h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                <div>
-                  <p className="text-slate-600">Total Capital</p>
-                  <p className="font-bold text-slate-900">{formatCurrency(formData.total_capital)}</p>
+            <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-cyan-50 border-2 border-emerald-200 rounded-2xl p-8 shadow-xl">
+              <h3 className="font-bold text-slate-900 mb-6 text-xl">📊 Your Trading Configuration</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                <div className="text-center p-4 bg-white/60 rounded-xl border border-emerald-100">
+                  <p className="text-xs font-medium text-slate-600 uppercase tracking-wider mb-2">Total Capital</p>
+                  <p className="font-bold text-lg text-slate-900">{formatCurrency(formData.total_capital)}</p>
                 </div>
-                <div>
-                  <p className="text-slate-600">Per Trade</p>
-                  <p className="font-bold text-emerald-600">{formatCurrency(calculateAllocationAmount().toString())}</p>
+                <div className="text-center p-4 bg-white/60 rounded-xl border border-emerald-100">
+                  <p className="text-xs font-medium text-slate-600 uppercase tracking-wider mb-2">Per Trade</p>
+                  <p className="font-bold text-lg text-emerald-600">{formatCurrency(calculateAllocationAmount().toString())}</p>
+                  <p className="text-xs text-emerald-500 mt-1">{formData.allocation_percentage}%</p>
                 </div>
-                <div>
-                  <p className="text-slate-600">Daily Loss Limit</p>
-                  <p className="font-bold text-rose-600">{formData.daily_loss_limit_percentage}%</p>
+                <div className="text-center p-4 bg-white/60 rounded-xl border border-rose-100">
+                  <p className="text-xs font-medium text-slate-600 uppercase tracking-wider mb-2">Daily Loss Limit</p>
+                  <p className="font-bold text-lg text-rose-600">{formData.daily_loss_limit_percentage}%</p>
+                  <p className="text-xs text-rose-500 mt-1">{formatCurrency((parseFloat(formData.total_capital || '0') * parseFloat(formData.daily_loss_limit_percentage) / 100).toString())}</p>
                 </div>
-                <div>
-                  <p className="text-slate-600">Max Positions</p>
-                  <p className="font-bold text-slate-900">{formData.max_concurrent_positions}</p>
+                <div className="text-center p-4 bg-white/60 rounded-xl border border-slate-100">
+                  <p className="text-xs font-medium text-slate-600 uppercase tracking-wider mb-2">Max Positions</p>
+                  <p className="font-bold text-lg text-slate-900">{formData.max_concurrent_positions}</p>
+                  <p className="text-xs text-slate-500 mt-1">Concurrent</p>
                 </div>
+              </div>
+              <div className="mt-6 p-4 bg-emerald-100 border border-emerald-300 rounded-xl">
+                <p className="text-sm font-medium text-emerald-800">
+                  🎯 <strong>Ready for automated trading:</strong> System will automatically place orders when signals are found and manage exits with trailing stops.
+                </p>
               </div>
             </div>
           </div>
@@ -460,20 +488,25 @@ export default function OnboardingFlow() {
           {renderStepContent()}
           
           {currentStep < 5 && (
-            <div className="flex justify-between mt-8">
+            <div className="flex justify-between mt-10">
               <button
                 onClick={() => setCurrentStep(Math.max(1, currentStep - 1))}
                 disabled={currentStep === 1}
-                className="px-6 py-3 border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-8 py-4 border-2 border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50 hover:border-slate-400 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 font-medium shadow-sm"
               >
-                Previous
+                ← Previous
               </button>
               <button
                 onClick={handleSubmitStep}
                 disabled={loading}
-                className="px-8 py-3 bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 hover:from-emerald-600 hover:via-teal-600 hover:to-cyan-600 text-white font-semibold rounded-xl shadow-lg transition-all duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-10 py-4 bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 hover:from-emerald-600 hover:via-teal-600 hover:to-cyan-600 text-white font-bold rounded-xl shadow-xl transition-all duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed text-lg"
               >
-                {loading ? 'Processing...' : currentStep === 4 ? 'Complete Setup' : 'Next'}
+                {loading ? (
+                  <span className="flex items-center">
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                    Processing...
+                  </span>
+                ) : currentStep === 4 ? '🚀 Complete Setup' : 'Next →'}
               </button>
             </div>
           )}
@@ -482,3 +515,4 @@ export default function OnboardingFlow() {
     </div>
   );
 }
+
