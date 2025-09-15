@@ -301,18 +301,24 @@ class ExitMonitoringService {
   } {
     const entryPrice = position.entry_price;
 
-    // Find current trailing stop level
-    let currentLevel = 0;
+    // Get existing trailing level (high-water mark)
+    const existingLevel = position.trailing_level || 0;
+
+    // Calculate what level current P&L would qualify for
+    let calculatedLevel = 0;
     let nextLevel = 1;
 
     for (let i = TRAILING_STOPS.length - 1; i >= 0; i--) {
       const level = TRAILING_STOPS[i];
       if (pnlPercentage >= level.profitThreshold) {
-        currentLevel = level.level;
+        calculatedLevel = level.level;
         nextLevel = i < TRAILING_STOPS.length - 1 ? TRAILING_STOPS[i + 1].level : level.level;
         break;
       }
     }
+
+    // HIGH-WATER MARK: Trailing level can only go UP, never DOWN
+    const currentLevel = Math.max(existingLevel, calculatedLevel);
 
     // If no profit level reached, check for first target
     if (currentLevel === 0) {
@@ -334,13 +340,13 @@ class ExitMonitoringService {
       const lockInPrice = entryPrice * (1 + currentLevelConfig.lockIn / 100);
       
       if (currentPrice < lockInPrice) {
-        // Trailing stop triggered
+        // Trailing stop triggered - Book profits now!
         return {
           shouldExit: true,
           exitSignal: {
             position,
             exitType: 'TRAILING_STOP',
-            exitReason: `Trailing stop Level ${currentLevel}: Price dropped below ${currentLevelConfig.lockIn}% lock-in`,
+            exitReason: `Book profits now! ${position.symbol} hit trailing stop at ${currentLevelConfig.lockIn}% - secure your gains before further drop!`,
             currentPrice,
             exitPrice: currentPrice,
             pnlAmount: currentPrice - entryPrice,
@@ -398,10 +404,10 @@ class ExitMonitoringService {
           
           const result = await this.whatsappService.sendMessage({
             phoneNumber: recipient.phone,
-            message1: `Hi ${recipient.name}! Exit alert from Dash 🚨`,
-            message2: `${exitSignal.position.symbol}: ₹${exitSignal.currentPrice} - EXIT`,
+            message1: `Hi ${recipient.name}! Book profits now! 📈`,
+            message2: `${exitSignal.position.symbol}: ₹${exitSignal.currentPrice} - TRAILING STOP HIT`,
             message3: `${exitSignal.exitReason}`,
-            message4: `PnL: ${exitSignal.pnlPercentage >= 0 ? '+' : ''}${exitSignal.pnlPercentage.toFixed(2)}% (₹${exitSignal.pnlAmount.toFixed(2)}) | ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' })} IST`
+            message4: `Final PnL: ${exitSignal.pnlPercentage >= 0 ? '+' : ''}${exitSignal.pnlPercentage.toFixed(2)}% (₹${exitSignal.pnlAmount.toFixed(2)}) | ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' })} IST`
           });
 
           if (result.success) {
@@ -467,17 +473,19 @@ class ExitMonitoringService {
     const entryPrice = position.entry_price;
     const pnlPercentage = ((currentPrice - entryPrice) / entryPrice) * 100;
 
-    let currentLevel = 0;
+    // Get existing trailing level (high-water mark)
+    const existingLevel = position.trailing_level || 0;
+
+    let calculatedLevel = 0;
     let nextLevel = 1;
     let lockInPrice = entryPrice * 0.975; // Default 2.5% stop loss
     let nextTargetPrice = entryPrice * 1.015; // Default 1.5% first target
 
-    // Find current level
+    // Find what level current P&L would qualify for
     for (let i = TRAILING_STOPS.length - 1; i >= 0; i--) {
       const level = TRAILING_STOPS[i];
       if (pnlPercentage >= level.profitThreshold) {
-        currentLevel = level.level;
-        lockInPrice = entryPrice * (1 + level.lockIn / 100);
+        calculatedLevel = level.level;
         
         const nextLevelConfig = TRAILING_STOPS[i + 1];
         if (nextLevelConfig) {
@@ -485,6 +493,17 @@ class ExitMonitoringService {
           nextTargetPrice = entryPrice * (1 + nextLevelConfig.profitThreshold / 100);
         }
         break;
+      }
+    }
+
+    // HIGH-WATER MARK: Use the higher of existing or calculated level
+    const currentLevel = Math.max(existingLevel, calculatedLevel);
+
+    // Set lock-in price based on the current (protected) level
+    if (currentLevel > 0) {
+      const levelConfig = TRAILING_STOPS.find(l => l.level === currentLevel);
+      if (levelConfig) {
+        lockInPrice = entryPrice * (1 + levelConfig.lockIn / 100);
       }
     }
 

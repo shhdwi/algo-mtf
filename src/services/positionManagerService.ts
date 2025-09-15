@@ -211,8 +211,8 @@ class PositionManagerService {
 
       const currentLevel = position.trailing_level || 0;
       
-      // Only update if level actually changed
-      if (currentLevel !== newLevel) {
+      // Only update if level actually INCREASED (high-water mark)
+      if (newLevel > currentLevel) {
         const { error } = await this.supabase
           .from('positions')
           .update({
@@ -224,8 +224,11 @@ class PositionManagerService {
 
         if (error) throw new Error(error.message);
         
-        console.log(`📈 Updated trailing level for ${symbol}: ${currentLevel} → ${newLevel}`);
-        return true; // Level changed
+        console.log(`📈 Updated trailing level for ${symbol}: ${currentLevel} → ${newLevel} (HIGH-WATER MARK)`);
+        return true; // Level increased
+      } else if (newLevel < currentLevel) {
+        console.log(`🔒 Trailing level protected for ${symbol}: keeping ${currentLevel} (was ${newLevel})`);
+        return false; // Level protected from going down
       }
       
       return false; // Level didn't change
