@@ -65,23 +65,23 @@ export async function POST(request: NextRequest) {
             continue;
           }
 
-          // Calculate position size based on user's allocation
-          const positionSize = await lemonService.calculatePositionSize(userId, signal.current_price);
+          // Calculate position size based on MTF margin for this stock
+          const positionSize = await lemonService.calculatePositionSize(userId, signal.symbol, signal.current_price);
           if (!positionSize || positionSize.quantity === 0) {
             console.log(`⚠️ Cannot calculate position size for ${signal.symbol} - price too high for allocation`);
             userResults.orders_failed++;
             continue;
           }
 
-          console.log(`💰 Position size for ${signal.symbol}: ${positionSize.quantity} shares (₹${positionSize.amount.toFixed(2)})`);
+          console.log(`💰 MTF Position size for ${signal.symbol}: ${positionSize.quantity} shares (₹${positionSize.amount.toFixed(2)}) | Margin: ₹${positionSize.marginRequired.toFixed(2)} | Leverage: ${positionSize.leverage.toFixed(2)}x`);
 
-          // Place real order via Lemon API
+          // Place real MTF order via Lemon API
           const orderResult = await lemonService.placeOrder(userId, {
             symbol: signal.symbol,
             transaction_type: 'BUY',
             quantity: positionSize.quantity,
             price: signal.current_price,
-            order_reason: 'ENTRY_SIGNAL',
+            order_reason: 'ENTRY_SIGNAL_MTF',
             scanner_signal_id: signal.symbol // Use symbol as signal ID for now
           });
 

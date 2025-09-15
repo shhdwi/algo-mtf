@@ -299,9 +299,9 @@ class LemonTradingService {
   }
 
   /**
-   * Calculate position size based on user's allocation settings
+   * Calculate position size based on MTF margin available for the stock
    */
-  async calculatePositionSize(userId: string, stockPrice: number): Promise<{ quantity: number; amount: number } | null> {
+  async calculatePositionSize(userId: string, symbol: string, stockPrice: number): Promise<{ quantity: number; amount: number; marginRequired: number; leverage: number } | null> {
     try {
       const { data: preferences, error } = await this.supabase
         .from('trading_preferences')
@@ -315,15 +315,100 @@ class LemonTradingService {
       }
 
       const allocationAmount = (preferences.total_capital * preferences.allocation_percentage) / 100;
-      const quantity = Math.floor(allocationAmount / stockPrice);
+
+      // Get MTF margin info for this stock
+      const marginInfo = await this.getMTFMarginInfo(userId, symbol, stockPrice, allocationAmount);
+      
+      if (!marginInfo) {
+        console.error(`Failed to get MTF margin info for ${symbol}`);
+        return null;
+      }
+
+      // Calculate quantity based on available margin
+      const quantity = Math.floor(allocationAmount / parseFloat(marginInfo.approximateMargin));
+      const totalAmount = quantity * stockPrice;
+      const marginRequired = quantity * parseFloat(marginInfo.approximateMargin);
+      const leverage = totalAmount / marginRequired;
+
+      console.log(`📊 MTF Position sizing for ${symbol}:`, {
+        allocation_amount: allocationAmount,
+        stock_price: stockPrice,
+        margin_per_share: marginInfo.approximateMargin,
+        quantity,
+        total_amount: totalAmount,
+        margin_required: marginRequired,
+        leverage: leverage.toFixed(2) + 'x'
+      });
 
       return {
         quantity,
-        amount: quantity * stockPrice
+        amount: totalAmount,
+        marginRequired,
+        leverage
       };
 
     } catch (error) {
-      console.error('Error calculating position size:', error);
+      console.error('Error calculating MTF position size:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Get MTF margin info for a specific stock
+   */
+  private async getMTFMarginInfo(userId: string, symbol: string, price: number, quantity: number): Promise<any> {
+    try {
+      const accessToken = await this.getAccessToken(userId);
+      if (!accessToken) {
+        return null;
+      }
+
+      const { data: credentials } = await this.supabase
+        .from('api_credentials')
+        .select('client_id, public_key_encrypted')
+        .eq('user_id', userId)
+        .single();
+
+      if (!credentials) {
+        return null;
+      }
+
+      const publicKey = this.decrypt(credentials.public_key_encrypted);
+      const clientId = credentials.client_id;
+
+      // Get margin info from Lemon API
+      const marginPayload = {
+        symbol,
+        exchange: 'NSE',
+        transactionType: 'BUY',
+        price: price.toString(),
+        quantity: '1', // Get margin for 1 share, we'll multiply later
+        productType: 'MTF'
+      };
+
+      const response = await fetch(`${this.LEMON_BASE_URL}/api-trading/api/v2/margin-info`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': publicKey,
+          'x-auth-key': accessToken,
+          'x-client-id': clientId
+        },
+        body: JSON.stringify(marginPayload)
+      });
+
+      const result = await response.json();
+
+      if (result.status === 'success') {
+        console.log(`📊 MTF Margin info for ${symbol}:`, result.data);
+        return result.data;
+      } else {
+        console.error(`Failed to get margin info for ${symbol}:`, result);
+        return null;
+      }
+
+    } catch (error) {
+      console.error(`Error getting MTF margin info for ${symbol}:`, error);
       return null;
     }
   }
