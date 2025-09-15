@@ -134,6 +134,7 @@ export async function POST(request: NextRequest) {
       
       // Generate Ed25519 signature (same as existing working system)
       const crypto = require('crypto');
+      let signature: string;
       
       try {
         // Convert private key from hex to bytes (32 bytes for Ed25519)
@@ -161,7 +162,7 @@ export async function POST(request: NextRequest) {
         const keyObject = crypto.createPrivateKey(pemKey);
         const messageBytes = Buffer.from(message, 'utf-8');
         const signatureBuffer = crypto.sign(null, messageBytes, keyObject);
-        const signature = signatureBuffer.toString('hex');
+        signature = signatureBuffer.toString('hex');
         
         console.log('🔐 Ed25519 signature generated successfully');
         
