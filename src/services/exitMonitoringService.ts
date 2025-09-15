@@ -436,12 +436,15 @@ class ExitMonitoringService {
         try {
           console.log(`📱 Sending ${notification.symbol} trailing level notification to ${recipient.name}...`);
           
+          // Calculate locked profit amount based on 1 lakh investment
+          const lockedProfitAmount = (notification.lockInPrice - notification.position.entry_price) / notification.position.entry_price * 100000;
+          
           const result = await this.whatsappService.sendMessage({
             phoneNumber: recipient.phone,
             message1: `Hi ${recipient.name}! Trailing level activated 🎯`,
-            message2: `${notification.symbol}: ₹${notification.currentPrice} - LEVEL ${notification.newLevel}`,
-            message3: `${notification.levelDescription} | Profits locked at ₹${notification.lockInPrice.toFixed(2)}`,
-            message4: `PnL: +${notification.pnlPercentage.toFixed(2)}% (₹${notification.pnlAmount.toFixed(2)}) | ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' })} IST`
+            message2: `${notification.symbol}: ₹${notification.currentPrice} - LEVEL ${notification.newLevel} ACTIVATED`,
+            message3: `${notification.levelDescription} | ₹${lockedProfitAmount.toFixed(0)} profit now LOCKED (${((notification.lockInPrice - notification.position.entry_price) / notification.position.entry_price * 100).toFixed(2)}%)`,
+            message4: `Current PnL: +${notification.pnlPercentage.toFixed(2)}% (₹${notification.pnlAmount.toFixed(0)}) | Protected at ₹${notification.lockInPrice.toFixed(2)} | ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' })} IST`
           });
 
           if (result.success) {
