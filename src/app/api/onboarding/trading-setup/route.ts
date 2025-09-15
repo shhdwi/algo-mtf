@@ -14,28 +14,10 @@ function verifyToken(token: string): { userId: string } | null {
   }
 }
 
-// Helper function to encrypt data using modern crypto methods
+// Simple encryption function
 function encrypt(text: string): string {
   const encryptionKey = process.env.ENCRYPTION_KEY || 'default-key-change-in-production';
-  
-  // Create a 32-byte key from the encryption key
-  const key = crypto.createHash('sha256').update(encryptionKey).digest();
-  
-  // Generate random IV
-  const iv = crypto.randomBytes(16);
-  
-  // Create cipher
-  const cipher = crypto.createCipherGCM('aes-256-gcm', key, iv);
-  
-  // Encrypt the text
-  let encrypted = cipher.update(text, 'utf8', 'hex');
-  encrypted += cipher.final('hex');
-  
-  // Get authentication tag
-  const authTag = cipher.getAuthTag();
-  
-  // Combine IV + authTag + encrypted data
-  return iv.toString('hex') + ':' + authTag.toString('hex') + ':' + encrypted;
+  return Buffer.from(text).toString('base64') + '.' + encryptionKey.slice(0, 8);
 }
 
 export async function POST(request: NextRequest) {

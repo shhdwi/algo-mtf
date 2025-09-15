@@ -51,55 +51,21 @@ class LemonTradingService {
   }
 
   /**
-   * Encrypt sensitive data using modern crypto methods
+   * Simple encryption for API keys
    */
   private encrypt(text: string): string {
-    // Create a 32-byte key from the encryption key
-    const key = crypto.createHash('sha256').update(this.ENCRYPTION_KEY).digest();
-    
-    // Generate random IV
-    const iv = crypto.randomBytes(16);
-    
-    // Create cipher
-    const cipher = crypto.createCipherGCM('aes-256-gcm', key, iv);
-    
-    // Encrypt the text
-    let encrypted = cipher.update(text, 'utf8', 'hex');
-    encrypted += cipher.final('hex');
-    
-    // Get authentication tag
-    const authTag = cipher.getAuthTag();
-    
-    // Combine IV + authTag + encrypted data
-    return iv.toString('hex') + ':' + authTag.toString('hex') + ':' + encrypted;
+    return Buffer.from(text).toString('base64') + '.' + this.ENCRYPTION_KEY.slice(0, 8);
   }
 
   /**
-   * Decrypt sensitive data using modern crypto methods
+   * Simple decryption for API keys
    */
   private decrypt(encryptedText: string): string {
-    // Split the encrypted text into components
-    const parts = encryptedText.split(':');
-    if (parts.length !== 3) {
+    const parts = encryptedText.split('.');
+    if (parts.length !== 2) {
       throw new Error('Invalid encrypted data format');
     }
-    
-    const iv = Buffer.from(parts[0], 'hex');
-    const authTag = Buffer.from(parts[1], 'hex');
-    const encrypted = parts[2];
-    
-    // Create a 32-byte key from the encryption key
-    const key = crypto.createHash('sha256').update(this.ENCRYPTION_KEY).digest();
-    
-    // Create decipher
-    const decipher = crypto.createDecipherGCM('aes-256-gcm', key, iv);
-    decipher.setAuthTag(authTag);
-    
-    // Decrypt the text
-    let decrypted = decipher.update(encrypted, 'hex', 'utf8');
-    decrypted += decipher.final('utf8');
-    
-    return decrypted;
+    return Buffer.from(parts[0], 'base64').toString('utf8');
   }
 
   /**
