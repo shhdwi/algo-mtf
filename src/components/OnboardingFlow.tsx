@@ -60,8 +60,7 @@ export default function OnboardingFlow() {
     daily_loss_limit_percentage: '5',
     stop_loss_percentage: '2.5',
     
-    // Step 3: API Configuration
-    api_setup_method: 'existing', // 'existing' or 'generate'
+    // Step 3: API Configuration (Only 3 required fields)
     client_id: '',
     public_key: '',
     private_key: '',
@@ -306,57 +305,97 @@ export default function OnboardingFlow() {
 
       case 3:
         return (
-          <div className="space-y-6">
-            <h2 className="text-2xl font-bold text-slate-900">API Configuration</h2>
+          <div className="space-y-8">
+            <div>
+              <h2 className="text-3xl font-bold text-slate-900 mb-2">Connect Your Trading API</h2>
+              <p className="text-lg text-slate-600">Enter your Lemon API credentials to enable real trading</p>
+            </div>
+            
             <div className="space-y-6">
-              <div className="grid grid-cols-1 gap-6">
-                <div>
-                  <label className="block text-sm font-semibold text-slate-800 mb-3">Client ID</label>
-                  <input
-                    type="text"
-                    value={formData.client_id}
-                    onChange={(e) => setFormData({...formData, client_id: e.target.value})}
-                    className="w-full px-5 py-4 border-2 border-slate-200 rounded-xl bg-white/80 backdrop-blur-sm focus:ring-3 focus:ring-cyan-200 focus:border-cyan-400 transition-all duration-200 text-slate-900 placeholder-slate-400 shadow-sm hover:border-cyan-300 font-mono text-lg"
-                    placeholder="CLIENT123"
-                  />
-                  <p className="text-xs text-slate-500 mt-2">Your unique client identifier from Lemon API</p>
+              <div>
+                <label className="block text-sm font-bold text-slate-800 mb-3">
+                  Client ID <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={formData.client_id}
+                  onChange={(e) => setFormData({...formData, client_id: e.target.value})}
+                  className="w-full px-6 py-4 border-2 border-slate-300 rounded-2xl bg-white focus:ring-4 focus:ring-blue-200 focus:border-blue-400 transition-all duration-200 text-slate-900 placeholder-slate-500 shadow-lg hover:border-blue-300 font-mono text-lg"
+                  placeholder="CLIENT123"
+                  required
+                />
+                <p className="text-sm font-medium text-blue-600 mt-2">
+                  🆔 Your unique client identifier from Lemon API
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-slate-800 mb-3">
+                  API Public Key <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={formData.public_key}
+                  onChange={(e) => setFormData({...formData, public_key: e.target.value})}
+                  className="w-full px-6 py-4 border-2 border-slate-300 rounded-2xl bg-white focus:ring-4 focus:ring-green-200 focus:border-green-400 transition-all duration-200 text-slate-900 placeholder-slate-500 shadow-lg hover:border-green-300 font-mono"
+                  placeholder="pk_live_1234567890abcdef..."
+                  required
+                />
+                <p className="text-sm font-medium text-green-600 mt-2">
+                  🔑 Your Lemon API public key (starts with pk_live_)
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-slate-800 mb-3">
+                  API Private Key <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="password"
+                  value={formData.private_key}
+                  onChange={(e) => setFormData({...formData, private_key: e.target.value})}
+                  className="w-full px-6 py-4 border-2 border-slate-300 rounded-2xl bg-white focus:ring-4 focus:ring-purple-200 focus:border-purple-400 transition-all duration-200 text-slate-900 placeholder-slate-500 shadow-lg hover:border-purple-300 font-mono"
+                  placeholder="sk_live_1234567890abcdef..."
+                  required
+                />
+                <p className="text-sm font-medium text-purple-600 mt-2">
+                  🔐 Your Lemon API private key (starts with sk_live_) - encrypted and secure
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-gradient-to-r from-blue-50 via-indigo-50 to-purple-50 border-2 border-blue-200 rounded-2xl p-8 shadow-xl">
+              <h3 className="font-bold text-slate-900 mb-4 text-xl flex items-center">
+                🛡️ What We Use These For
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-sm">
+                <div className="text-center p-4 bg-white/70 rounded-xl border border-blue-100">
+                  <div className="text-2xl mb-2">🆔</div>
+                  <p className="font-semibold text-slate-800">Client ID</p>
+                  <p className="text-slate-600 mt-1">Authentication identifier</p>
                 </div>
-                <div>
-                  <label className="block text-sm font-semibold text-slate-800 mb-3">Public Key</label>
-                  <input
-                    type="text"
-                    value={formData.public_key}
-                    onChange={(e) => setFormData({...formData, public_key: e.target.value})}
-                    className="w-full px-5 py-4 border-2 border-slate-200 rounded-xl bg-white/80 backdrop-blur-sm focus:ring-3 focus:ring-cyan-200 focus:border-cyan-400 transition-all duration-200 text-slate-900 placeholder-slate-400 shadow-sm hover:border-cyan-300 font-mono"
-                    placeholder="pk_live_1234567890abcdef..."
-                  />
-                  <p className="text-xs text-slate-500 mt-2">Your Lemon API public key (starts with pk_live_)</p>
+                <div className="text-center p-4 bg-white/70 rounded-xl border border-green-100">
+                  <div className="text-2xl mb-2">🔑</div>
+                  <p className="font-semibold text-slate-800">Public Key</p>
+                  <p className="text-slate-600 mt-1">API access authentication</p>
                 </div>
-                <div>
-                  <label className="block text-sm font-semibold text-slate-800 mb-3">Private Key</label>
-                  <input
-                    type="password"
-                    value={formData.private_key}
-                    onChange={(e) => setFormData({...formData, private_key: e.target.value})}
-                    className="w-full px-5 py-4 border-2 border-slate-200 rounded-xl bg-white/80 backdrop-blur-sm focus:ring-3 focus:ring-cyan-200 focus:border-cyan-400 transition-all duration-200 text-slate-900 placeholder-slate-400 shadow-sm hover:border-cyan-300 font-mono"
-                    placeholder="sk_live_1234567890abcdef..."
-                  />
-                  <p className="text-xs text-slate-500 mt-2">Your Lemon API private key (starts with sk_live_) - kept secure and encrypted</p>
+                <div className="text-center p-4 bg-white/70 rounded-xl border border-purple-100">
+                  <div className="text-2xl mb-2">🔐</div>
+                  <p className="font-semibold text-slate-800">Private Key</p>
+                  <p className="text-slate-600 mt-1">Secure signature generation</p>
                 </div>
               </div>
-              <div className="bg-gradient-to-r from-cyan-50 via-blue-50 to-indigo-50 border-2 border-cyan-200 rounded-2xl p-6 shadow-lg">
-                <h3 className="font-bold text-slate-900 mb-3 text-lg">🔐 Security & Privacy</h3>
-                <div className="space-y-2 text-sm text-slate-700">
-                  <p>✅ <strong>Encrypted Storage:</strong> All API keys are encrypted using AES-256 encryption</p>
-                  <p>✅ <strong>Secure Transmission:</strong> Keys are never sent in plain text</p>
-                  <p>✅ <strong>Access Control:</strong> Only you can access your trading account</p>
-                  <p>✅ <strong>No Plain Text:</strong> Private keys are never stored unencrypted</p>
-                </div>
-                <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                  <p className="text-xs text-amber-800">
-                    <strong>📋 Where to find:</strong> Get your Lemon API keys from your broker's developer portal or API section
-                  </p>
-                </div>
+              
+              <div className="mt-6 p-4 bg-emerald-100 border border-emerald-300 rounded-xl">
+                <p className="text-sm font-semibold text-emerald-800 flex items-center">
+                  🔒 <span className="ml-2">All keys are encrypted with AES-256 and never stored in plain text</span>
+                </p>
+              </div>
+              
+              <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+                <p className="text-sm text-amber-800">
+                  <strong>📋 How to get these:</strong> Generate API keys from your Lemon/broker dashboard → Developer/API section → Generate new API key pair
+                </p>
               </div>
             </div>
           </div>

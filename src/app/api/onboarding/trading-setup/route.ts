@@ -50,15 +50,10 @@ export async function POST(request: NextRequest) {
       daily_loss_limit_percentage,
       stop_loss_percentage,
       
-      // API credentials (optional - user can provide existing keys)
+      // Required API credentials (3 fields only)
       client_id,
       public_key,
-      private_key,
-      
-      // Or API generation data (if user wants to generate new keys)
-      generate_new_api,
-      phone_for_otp,
-      pin
+      private_key
     } = await request.json();
 
     // Validate trading preferences
@@ -112,45 +107,58 @@ export async function POST(request: NextRequest) {
       }, { status: 500 });
     }
 
-    // Handle API credentials
-    let apiSetupResult = null;
-
-    if (client_id && public_key && private_key) {
-      // User provided existing API keys
-      const { error: credentialsError } = await supabase
-        .from('api_credentials')
-        .upsert({
-          user_id: auth.userId,
-          client_id,
-          public_key_encrypted: encrypt(public_key),
-          private_key_encrypted: encrypt(private_key),
-          is_active: true,
-          updated_at: new Date().toISOString()
-        }, {
-          onConflict: 'user_id'
-        });
-
-      if (credentialsError) {
-        console.error('Error saving API credentials:', credentialsError);
-        return NextResponse.json({
-          success: false,
-          error: 'Failed to save API credentials'
-        }, { status: 500 });
-      }
-
-      // Enable real trading
-      await supabase
-        .from('trading_preferences')
-        .update({ is_real_trading_enabled: true })
-        .eq('user_id', auth.userId);
-
-      apiSetupResult = { method: 'existing_keys', status: 'success' };
-
-    } else if (generate_new_api && phone_for_otp && pin) {
-      // User wants to generate new API keys via Lemon API
-      // This would involve the full OTP → PIN → API generation flow
-      apiSetupResult = { method: 'generate_new', status: 'pending', message: 'API generation flow not yet implemented' };
+    // Validate API credentials - all 3 fields are required
+    if (!client_id || !public_key || !private_key) {
+      return NextResponse.json({
+        success: false,
+        error: 'All API credentials are required: client_id, public_key, private_key'
+      }, { status: 400 });
     }
+
+    // Validate API key formats
+    if (!public_key.startsWith('pk_live_')) {
+      return NextResponse.json({
+        success: false,
+        error: 'Public key must start with pk_live_'
+      }, { status: 400 });
+    }
+
+    if (!private_key.startsWith('sk_live_')) {
+      return NextResponse.json({
+        success: false,
+        error: 'Private key must start with sk_live_'
+      }, { status: 400 });
+    }
+
+    // Save API credentials
+    const { error: credentialsError } = await supabase
+      .from('api_credentials')
+      .upsert({
+        user_id: auth.userId,
+        client_id,
+        public_key_encrypted: encrypt(public_key),
+        private_key_encrypted: encrypt(private_key),
+        is_active: true,
+        updated_at: new Date().toISOString()
+      }, {
+        onConflict: 'user_id'
+      });
+
+    if (credentialsError) {
+      console.error('Error saving API credentials:', credentialsError);
+      return NextResponse.json({
+        success: false,
+        error: 'Failed to save API credentials'
+      }, { status: 500 });
+    }
+
+    // Enable real trading
+    await supabase
+      .from('trading_preferences')
+      .update({ is_real_trading_enabled: true })
+      .eq('user_id', auth.userId);
+
+    const apiSetupResult = { method: 'api_keys_provided', status: 'success' };
 
     console.log(`✅ Trading setup completed for user: ${auth.userId}`);
 
@@ -159,8 +167,8 @@ export async function POST(request: NextRequest) {
       message: 'Trading setup completed successfully',
       setup: {
         trading_preferences: 'saved',
-        api_credentials: apiSetupResult?.status || 'not_provided',
-        real_trading_enabled: !!apiSetupResult?.status
+        api_credentials: apiSetupResult.status,
+        real_trading_enabled: true
       }
     });
 
