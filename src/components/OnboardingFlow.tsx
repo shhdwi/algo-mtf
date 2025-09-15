@@ -430,11 +430,11 @@ export default function OnboardingFlow() {
                   value={formData.public_key}
                   onChange={(e) => setFormData({...formData, public_key: e.target.value})}
                   className="w-full px-6 py-4 border-2 border-slate-300 rounded-2xl bg-white focus:ring-4 focus:ring-green-200 focus:border-green-400 transition-all duration-200 text-slate-900 placeholder-slate-500 shadow-lg hover:border-green-300 font-mono"
-                  placeholder="pk_live_1234567890abcdef..."
+                  placeholder="Enter your Lemon API public key"
                   required
                 />
                 <p className="text-sm font-medium text-green-600 mt-2">
-                  🔑 Your Lemon API public key (starts with pk_live_)
+                  🔑 Your Lemon API public key (will be validated with live API test)
                 </p>
               </div>
 
@@ -447,11 +447,11 @@ export default function OnboardingFlow() {
                   value={formData.private_key}
                   onChange={(e) => setFormData({...formData, private_key: e.target.value})}
                   className="w-full px-6 py-4 border-2 border-slate-300 rounded-2xl bg-white focus:ring-4 focus:ring-purple-200 focus:border-purple-400 transition-all duration-200 text-slate-900 placeholder-slate-500 shadow-lg hover:border-purple-300 font-mono"
-                  placeholder="sk_live_1234567890abcdef..."
+                  placeholder="Enter your Lemon API private key"
                   required
                 />
                 <p className="text-sm font-medium text-purple-600 mt-2">
-                  🔐 Your Lemon API private key (starts with sk_live_) - encrypted and secure
+                  🔐 Your Lemon API private key (will be tested for authentication)
                 </p>
               </div>
             </div>

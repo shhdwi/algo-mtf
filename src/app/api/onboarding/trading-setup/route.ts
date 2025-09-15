@@ -115,18 +115,45 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Validate API key formats
-    if (!public_key.startsWith('pk_live_')) {
-      return NextResponse.json({
-        success: false,
-        error: 'Public key must start with pk_live_'
-      }, { status: 400 });
-    }
+    // Validate API credentials by testing login with Lemon API
+    try {
+      console.log('🔍 Validating API credentials with Lemon API...');
+      
+      // Test the credentials by attempting to generate an access token
+      const epochTime = Date.now().toString();
+      const message = client_id + epochTime;
+      
+      // Generate signature using the private key (simplified for testing)
+      const crypto = require('crypto');
+      const signature = crypto.createHmac('sha256', private_key).update(message).digest('hex');
+      
+      const testResponse = await fetch('https://cs-prod.lemonn.co.in/api-trading/api/v1/generate_access_token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': public_key,
+          'x-epoch-time': epochTime,
+          'x-signature': signature
+        },
+        body: JSON.stringify({ client_id })
+      });
 
-    if (!private_key.startsWith('sk_live_')) {
+      const testResult = await testResponse.json();
+      
+      if (testResult.status !== 'success') {
+        return NextResponse.json({
+          success: false,
+          error: `Invalid API credentials: ${testResult.message || 'Authentication failed with Lemon API'}`
+        }, { status: 400 });
+      }
+      
+      console.log('✅ API credentials validated successfully');
+      
+    } catch (apiError) {
+      console.error('API validation error:', apiError);
       return NextResponse.json({
         success: false,
-        error: 'Private key must start with sk_live_'
+        error: 'Failed to validate API credentials with Lemon API. Please check your keys.'
       }, { status: 400 });
     }
 
