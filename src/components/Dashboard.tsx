@@ -332,7 +332,7 @@ export default function Dashboard() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm text-slate-900">
-                            {position.trailing_level > 0 && position.trailing_level !== 1.5 ? (
+                            {position.trailing_level > 0 ? (
                               <span className="inline-flex items-center px-3 py-1.5 rounded-xl text-xs font-semibold bg-gradient-to-r from-cyan-100 to-teal-100 text-cyan-800 border border-cyan-200 shadow-sm">
                                 Level {position.trailing_level}
                               </span>

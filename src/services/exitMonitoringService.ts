@@ -3,23 +3,23 @@ import CombinedTradingService from './combinedTradingService';
 import PositionManagerService, { Position } from './positionManagerService';
 import WhatsAppService from './whatsappService';
 
-// 14-Level Trailing Stop Configuration
+// 14-Level Trailing Stop Configuration (Whole Numbers Only)
 const TRAILING_STOPS = [
   { level: 1, profitThreshold: 1.5, lockIn: 1.0, description: "Early Protection" },
-  { level: 1.5, profitThreshold: 2.25, lockIn: 1.75, description: "Enhanced Early" },
-  { level: 2, profitThreshold: 2.75, lockIn: 2.0, description: "Small Gain Lock" },
-  { level: 3, profitThreshold: 4.0, lockIn: 2.5, description: "Base Profit" },
-  { level: 4, profitThreshold: 5.0, lockIn: 3.0, description: "Steady Growth" },
-  { level: 5, profitThreshold: 6.0, lockIn: 3.5, description: "Momentum Build" },
-  { level: 6, profitThreshold: 7.0, lockIn: 4.2, description: "Strong Move" },
-  { level: 7, profitThreshold: 8.0, lockIn: 5.0, description: "Trend Confirm" },
-  { level: 8, profitThreshold: 10.0, lockIn: 6.5, description: "Big Move" },
-  { level: 9, profitThreshold: 12.0, lockIn: 8.0, description: "Strong Trend" },
-  { level: 10, profitThreshold: 15.0, lockIn: 10.5, description: "Major Move" },
-  { level: 11, profitThreshold: 18.0, lockIn: 13.0, description: "Breakout" },
-  { level: 12, profitThreshold: 20.0, lockIn: 15.0, description: "Big Breakout" },
-  { level: 13, profitThreshold: 25.0, lockIn: 19.0, description: "Explosive Move" },
-  { level: 14, profitThreshold: 30.0, lockIn: 23.0, description: "Maximum Capture" }
+  { level: 2, profitThreshold: 2.25, lockIn: 1.75, description: "Enhanced Early" },
+  { level: 3, profitThreshold: 2.75, lockIn: 2.0, description: "Small Gain Lock" },
+  { level: 4, profitThreshold: 4.0, lockIn: 2.5, description: "Base Profit" },
+  { level: 5, profitThreshold: 5.0, lockIn: 3.0, description: "Steady Growth" },
+  { level: 6, profitThreshold: 6.0, lockIn: 3.5, description: "Momentum Build" },
+  { level: 7, profitThreshold: 7.0, lockIn: 4.2, description: "Strong Move" },
+  { level: 8, profitThreshold: 8.0, lockIn: 5.0, description: "Trend Confirm" },
+  { level: 9, profitThreshold: 10.0, lockIn: 6.5, description: "Big Move" },
+  { level: 10, profitThreshold: 12.0, lockIn: 8.0, description: "Strong Trend" },
+  { level: 11, profitThreshold: 15.0, lockIn: 10.5, description: "Major Move" },
+  { level: 12, profitThreshold: 18.0, lockIn: 13.0, description: "Breakout" },
+  { level: 13, profitThreshold: 20.0, lockIn: 15.0, description: "Big Breakout" },
+  { level: 14, profitThreshold: 25.0, lockIn: 19.0, description: "Explosive Move" },
+  { level: 15, profitThreshold: 30.0, lockIn: 23.0, description: "Maximum Capture" }
 ];
 
 export interface ExitSignal {
