@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { User, DollarSign, Settings, Key, CheckCircle } from 'lucide-react';
+import React, { useState } from 'react';
+import { User, DollarSign, Settings, Key, CheckCircle, Loader2 } from 'lucide-react';
 
 interface OnboardingStep {
   id: number;
@@ -46,6 +46,8 @@ const ONBOARDING_STEPS: OnboardingStep[] = [
 export default function OnboardingFlow() {
   const [currentStep, setCurrentStep] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [initializing, setInitializing] = useState(true);
+  const [userToken, setUserToken] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     // Step 1: Account
     email: '',
@@ -89,6 +91,88 @@ export default function OnboardingFlow() {
     return 0;
   };
 
+  // Check user's onboarding status on component mount
+  const checkOnboardingStatus = async () => {
+    try {
+      setInitializing(true);
+      
+      // Check if user is logged in
+      const token = localStorage.getItem('userToken');
+      if (!token) {
+        setInitializing(false);
+        return; // Start from step 1 (registration)
+      }
+
+      setUserToken(token);
+
+      // Check user's onboarding progress
+      const response = await fetch('/api/onboarding/status', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        
+        // Populate form with existing data
+        if (data.user) {
+          setFormData(prev => ({
+            ...prev,
+            email: data.user.email || '',
+            full_name: data.user.full_name || '',
+            phone_number: data.user.phone_number || ''
+          }));
+        }
+
+        if (data.trading_preferences) {
+          setFormData(prev => ({
+            ...prev,
+            total_capital: data.trading_preferences.total_capital?.toString() || '',
+            allocation_percentage: data.trading_preferences.allocation_percentage?.toString() || '',
+            daily_loss_limit_percentage: data.trading_preferences.daily_loss_limit_percentage?.toString() || '5',
+            stop_loss_percentage: data.trading_preferences.stop_loss_percentage?.toString() || '2.5',
+            max_concurrent_positions: data.trading_preferences.max_concurrent_positions?.toString() || '10'
+          }));
+        }
+
+        if (data.api_credentials) {
+          setFormData(prev => ({
+            ...prev,
+            client_id: data.api_credentials.client_id || ''
+          }));
+        }
+
+        // Determine which step to start from
+        if (data.onboarding_complete) {
+          setCurrentStep(5); // Already complete
+        } else if (data.api_credentials?.client_id) {
+          setCurrentStep(4); // Has API, go to final settings
+        } else if (data.trading_preferences?.total_capital) {
+          setCurrentStep(3); // Has preferences, needs API
+        } else if (data.user) {
+          setCurrentStep(2); // User exists, needs preferences
+        } else {
+          setCurrentStep(1); // Start from registration
+        }
+      } else {
+        // Invalid token, start from registration
+        localStorage.removeItem('userToken');
+        setCurrentStep(1);
+      }
+    } catch (error) {
+      console.error('Error checking onboarding status:', error);
+      setCurrentStep(1);
+    } finally {
+      setInitializing(false);
+    }
+  };
+
+  // Run status check on mount
+  React.useEffect(() => {
+    checkOnboardingStatus();
+  }, []);
+
   const handleSubmitStep = async () => {
     setLoading(true);
     
@@ -114,24 +198,32 @@ export default function OnboardingFlow() {
 
         const result = await response.json();
         if (result.success) {
-          setCurrentStep(2);
+          // Auto-login after registration
+          const loginResponse = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              email: formData.email,
+              password: formData.password
+            })
+          });
+
+          const loginResult = await loginResponse.json();
+          if (loginResult.success) {
+            localStorage.setItem('userToken', loginResult.token);
+            setUserToken(loginResult.token);
+            setCurrentStep(2);
+          } else {
+            alert('Registration successful, but login failed. Please try logging in manually.');
+          }
         } else {
           alert(result.error);
         }
       } else if (currentStep === 4) {
         // Complete onboarding - save all settings
-        const loginResponse = await fetch('/api/auth/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            email: formData.email,
-            password: formData.password
-          })
-        });
-
-        const loginResult = await loginResponse.json();
-        if (!loginResult.success) {
-          alert('Login failed');
+        if (!userToken) {
+          alert('Authentication required. Please start over.');
+          setCurrentStep(1);
           setLoading(false);
           return;
         }
@@ -140,7 +232,7 @@ export default function OnboardingFlow() {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${loginResult.token}`
+            'Authorization': `Bearer ${userToken}`
           },
           body: JSON.stringify({
             total_capital: parseFloat(formData.total_capital),
@@ -485,6 +577,19 @@ export default function OnboardingFlow() {
     }
   };
 
+  // Show loading while checking onboarding status
+  if (initializing) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-12 h-12 animate-spin text-emerald-500 mx-auto mb-4" />
+          <p className="text-lg font-medium text-slate-700">Checking your onboarding status...</p>
+          <p className="text-sm text-slate-500 mt-2">Please wait while we load your information</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50">
       {/* Progress Bar */}
@@ -517,6 +622,11 @@ export default function OnboardingFlow() {
             <p className="text-sm text-slate-600">
               {ONBOARDING_STEPS[currentStep - 1]?.description}
             </p>
+            {userToken && currentStep > 1 && (
+              <div className="mt-2 px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full text-xs font-medium inline-block">
+                👋 Welcome back! Continuing your setup...
+              </div>
+            )}
           </div>
         </div>
       </div>
