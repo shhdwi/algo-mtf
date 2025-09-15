@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import crypto from 'crypto';
+import * as crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 
 // Helper function to verify JWT token
@@ -19,13 +19,13 @@ function encrypt(text: string): string {
   const encryptionKey = process.env.ENCRYPTION_KEY || 'default-key-change-in-production';
   
   // Create a 32-byte key from the encryption key
-  const key = require('crypto').createHash('sha256').update(encryptionKey).digest();
+  const key = crypto.createHash('sha256').update(encryptionKey).digest();
   
   // Generate random IV
-  const iv = require('crypto').randomBytes(16);
+  const iv = crypto.randomBytes(16);
   
   // Create cipher
-  const cipher = require('crypto').createCipherGCM('aes-256-gcm', key, iv);
+  const cipher = crypto.createCipherGCM('aes-256-gcm', key, iv);
   
   // Encrypt the text
   let encrypted = cipher.update(text, 'utf8', 'hex');
@@ -148,7 +148,6 @@ export async function POST(request: NextRequest) {
       console.log('🔐 Signature generation:', { epochTime, message_length: message.length });
       
       // Generate Ed25519 signature (same as existing working system)
-      const crypto = require('crypto');
       let signature: string;
       
       try {
