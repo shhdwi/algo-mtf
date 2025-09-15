@@ -222,12 +222,12 @@ class LemonTradingService {
       const publicKey = this.decrypt(credentials.public_key_encrypted);
       const clientId = credentials.client_id;
 
-      // Prepare order payload for Lemon API
+      // Prepare order payload for Lemon API with MTF (Margin Trading Facility)
       const orderPayload = {
         clientId,
         transactionType: orderRequest.transaction_type,
         exchangeSegment: 'NSE',
-        productType: 'DELIVERY',
+        productType: 'MTF',  // Using MTF for margin trading
         orderType: 'MARKET',
         validity: 'DAY',
         symbol: orderRequest.symbol,
@@ -271,7 +271,7 @@ class LemonTradingService {
           console.error('Failed to save order to database:', orderError);
         }
 
-        console.log(`✅ Order placed: ${orderRequest.symbol} ${orderRequest.transaction_type} ${orderRequest.quantity} - Order ID: ${result.data.orderId}`);
+          console.log(`✅ MTF Order placed: ${orderRequest.symbol} ${orderRequest.transaction_type} ${orderRequest.quantity} shares - Order ID: ${result.data.orderId}`);
 
         return {
           success: true,

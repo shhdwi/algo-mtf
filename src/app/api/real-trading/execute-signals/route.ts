@@ -144,10 +144,10 @@ export async function POST(request: NextRequest) {
 
             await whatsappService.sendMessage({
               phoneNumber: user.phone_number,
-              message1: `Hi ${user.full_name}! Real trading orders placed 🎯`,
-              message2: `${userResults.orders_placed} positions entered from daily scan`,
+              message1: `Hi ${user.full_name}! MTF trading orders placed 🎯`,
+              message2: `${userResults.orders_placed} MTF positions entered from daily scan`,
               message3: ordersList,
-              message4: `Total invested: ₹${successfulOrders.reduce((sum, o) => sum + o.amount, 0).toFixed(0)} | ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' })} IST`
+              message4: `Total MTF investment: ₹${successfulOrders.reduce((sum, o) => sum + o.amount, 0).toFixed(0)} | ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' })} IST`
             });
 
             console.log(`📱 Real trading WhatsApp sent to user ${userId}`);
