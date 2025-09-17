@@ -559,7 +559,7 @@ export default function OnboardingFlow() {
               <ul className="text-left space-y-2 text-slate-700">
                 <li>🕒 <strong>3:15 PM IST</strong> - Daily scan will find entry signals and place real orders</li>
                 <li>⚡ <strong>Every 5 minutes</strong> - System monitors positions and executes exits</li>
-                <li>📱 <strong>WhatsApp alerts</strong> - You'll receive notifications for all trading activity</li>
+                <li>📱 <strong>WhatsApp alerts</strong> - You&apos;ll receive notifications for all trading activity</li>
                 <li>📊 <strong>Dashboard access</strong> - Track your real trading performance</li>
               </ul>
             </div>

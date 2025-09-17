@@ -8,7 +8,7 @@ function verifyToken(token: string): { userId: string } | null {
     const jwtSecret = process.env.JWT_SECRET || 'default-secret-change-in-production';
     const decoded = jwt.verify(token, jwtSecret) as any;
     return { userId: decoded.userId };
-  } catch (error) {
+  } catch {
     return null;
   }
 }
@@ -92,8 +92,7 @@ export async function GET(request: NextRequest) {
         has_api_credentials: hasApiCredentials,
         is_real_trading_enabled: isRealTradingEnabled,
         onboarding_complete: onboardingComplete
-      },
-      onboarding_complete
+      }
     });
 
   } catch (error) {

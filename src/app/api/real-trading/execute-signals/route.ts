@@ -5,16 +5,31 @@ import WhatsAppService from '@/services/whatsappService';
 
 export async function POST(request: NextRequest) {
   try {
-    const { exchange = 'NSE', send_whatsapp = true } = await request.json();
+    const { 
+      exchange = 'NSE', 
+      send_whatsapp = true, 
+      test_mode = false,
+      entry_signals = null,
+      skip_scan = false 
+    } = await request.json();
 
     console.log('🚀 Starting Real Trading Signal Execution...');
     
-    // Run the ultimate scanner to get entry signals
-    const scanner = new UltimateScannerService();
-    const scanResults = await scanner.ultimateScanWithPositionManagement(exchange, false); // Don't send WhatsApp from scanner
-    
-    const entrySignals = scanResults.results.filter(r => r.signal === 'ENTRY');
-    console.log(`📊 Found ${entrySignals.length} entry signals for real trading`);
+    let entrySignals;
+    let scanResults;
+
+    if (skip_scan && entry_signals) {
+      // Use pre-scanned signals from daily scan cron job
+      entrySignals = entry_signals;
+      scanResults = { summary: { message: 'Using pre-scanned signals from daily scan' } };
+      console.log(`📊 Using ${entrySignals.length} pre-scanned entry signals for real trading`);
+    } else {
+      // Run the ultimate scanner to get entry signals (fallback for direct API calls)
+      const scanner = new UltimateScannerService();
+      scanResults = await scanner.ultimateScanWithPositionManagement(exchange, false); // Don't send WhatsApp from scanner
+      entrySignals = scanResults.results.filter(r => r.signal === 'ENTRY');
+      console.log(`📊 Found ${entrySignals.length} entry signals for real trading`);
+    }
 
     if (entrySignals.length === 0) {
       return NextResponse.json({
@@ -49,7 +64,7 @@ export async function POST(request: NextRequest) {
         orders_placed: 0,
         orders_failed: 0,
         signals_processed: 0,
-        orders: []
+        orders: [] as any[]
       };
 
       // Process each entry signal for this user
@@ -75,22 +90,37 @@ export async function POST(request: NextRequest) {
 
           console.log(`💰 MTF Position size for ${signal.symbol}: ${positionSize.quantity} shares (₹${positionSize.amount.toFixed(2)}) | Margin: ₹${positionSize.marginRequired.toFixed(2)} | Leverage: ${positionSize.leverage.toFixed(2)}x`);
 
-          // Place real MTF order via Lemon API
-          const orderResult = await lemonService.placeOrder(userId, {
-            symbol: signal.symbol,
-            transaction_type: 'BUY',
-            quantity: positionSize.quantity,
-            price: signal.current_price,
-            order_reason: 'ENTRY_SIGNAL_MTF',
-            scanner_signal_id: signal.symbol // Use symbol as signal ID for now
-          });
+          // Place MTF order via Lemon API (real or simulated based on test_mode)
+          let orderResult;
+          
+          if (test_mode) {
+            // Simulate order placement for testing
+            orderResult = {
+              success: true,
+              order_id: `TEST_${signal.symbol}_${Date.now()}`,
+              order_status: 'SIMULATED'
+            };
+            console.log(`🧪 SIMULATED: MTF order for ${signal.symbol} (test mode)`);
+          } else {
+            // Place real MTF order via Lemon API
+            orderResult = await lemonService.placeOrder(userId, {
+              symbol: signal.symbol,
+              transaction_type: 'BUY',
+              quantity: positionSize.quantity,
+              price: signal.current_price,
+              order_reason: 'ENTRY_SIGNAL_MTF',
+              scanner_signal_id: signal.symbol // Use symbol as signal ID for now
+            });
+          }
 
           if (orderResult.success) {
             userResults.orders_placed++;
             totalOrdersPlaced++;
             
-            // Create real position (assuming immediate fill for market orders)
-            await lemonService.createRealPosition(userId, orderResult.order_id!, signal.current_price);
+            // Create real position (skip in test mode)
+            if (!test_mode && orderResult.order_id) {
+              await lemonService.createRealPosition(userId, orderResult.order_id, signal.current_price);
+            }
             
             userResults.orders.push({
               symbol: signal.symbol,
@@ -98,7 +128,8 @@ export async function POST(request: NextRequest) {
               price: signal.current_price,
               amount: positionSize.amount,
               order_id: orderResult.order_id,
-              status: 'success'
+              status: 'success',
+              test_mode: test_mode
             });
 
             console.log(`✅ Real order placed: ${signal.symbol} for user ${userId}`);
@@ -169,7 +200,8 @@ export async function POST(request: NextRequest) {
         orders_placed: totalOrdersPlaced,
         orders_failed: totalOrdersFailed,
         signals_processed: entrySignals.length,
-        user_results: userOrderResults
+        user_results: userOrderResults,
+        test_mode: test_mode
       },
       timestamp: new Date().toISOString()
     });

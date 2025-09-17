@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { TrendingUp, TrendingDown, DollarSign, Activity, RefreshCw } from 'lucide-react';
+import { TrendingUp, TrendingDown, DollarSign, Activity, RefreshCw, BarChart3, ExternalLink } from 'lucide-react';
 
 interface Position {
   symbol: string;
@@ -115,14 +115,24 @@ export default function Dashboard() {
                 {lastUpdated ? `Last updated: ${lastUpdated.toLocaleTimeString()}` : 'Loading...'}
               </p>
             </div>
-            <button
-              onClick={fetchPositions}
-              disabled={loading}
-              className="inline-flex items-center px-6 py-3 border border-transparent rounded-xl shadow-lg text-sm font-medium text-white bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 hover:from-emerald-600 hover:via-teal-600 hover:to-cyan-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105"
-            >
-              <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-              Refresh
-            </button>
+            <div className="flex gap-3">
+              <a
+                href="/trades"
+                className="inline-flex items-center px-4 py-2 border border-emerald-300 rounded-xl shadow-sm text-sm font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 transition-all duration-300"
+              >
+                <BarChart3 className="w-4 h-4 mr-2" />
+                Trade History
+                <ExternalLink className="w-3 h-3 ml-1" />
+              </a>
+              <button
+                onClick={fetchPositions}
+                disabled={loading}
+                className="inline-flex items-center px-6 py-3 border border-transparent rounded-xl shadow-lg text-sm font-medium text-white bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 hover:from-emerald-600 hover:via-teal-600 hover:to-cyan-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105"
+              >
+                <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+                Refresh
+              </button>
+            </div>
           </div>
         </div>
       </div>

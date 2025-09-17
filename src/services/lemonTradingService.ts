@@ -227,7 +227,7 @@ class LemonTradingService {
         clientId,
         transactionType: orderRequest.transaction_type,
         exchangeSegment: 'NSE',
-        productType: 'MTF',  // Using MTF for margin trading
+        productType: 'MTF',  // Use MTF for order placement (supported here)
         orderType: 'MARKET',
         validity: 'DAY',
         symbol: orderRequest.symbol,
@@ -251,7 +251,7 @@ class LemonTradingService {
 
       if (result.status === 'success') {
         // Save order to database
-        const { data: orderData, error: orderError } = await this.supabase
+        const { error: orderError } = await this.supabase
           .from('real_orders')
           .insert({
             user_id: userId,
@@ -325,15 +325,23 @@ class LemonTradingService {
       }
 
       // Calculate quantity based on available margin
-      const quantity = Math.floor(allocationAmount / parseFloat(marginInfo.approximateMargin));
+      let marginPerShare = parseFloat(marginInfo.approximateMargin);
+      
+      // Fallback: If API returns 0 margin (market closed/account issue), use default 20% margin
+      if (marginPerShare === 0) {
+        marginPerShare = stockPrice * 0.20; // 20% margin = 5x leverage
+        console.log(`⚠️ Using fallback margin (20%) for ${symbol}: ₹${marginPerShare.toFixed(2)} per share`);
+      }
+      
+      const quantity = Math.floor(allocationAmount / marginPerShare);
       const totalAmount = quantity * stockPrice;
-      const marginRequired = quantity * parseFloat(marginInfo.approximateMargin);
+      const marginRequired = quantity * marginPerShare;
       const leverage = totalAmount / marginRequired;
 
       console.log(`📊 MTF Position sizing for ${symbol}:`, {
         allocation_amount: allocationAmount,
         stock_price: stockPrice,
-        margin_per_share: marginInfo.approximateMargin,
+        margin_per_share: marginPerShare,
         quantity,
         total_amount: totalAmount,
         margin_required: marginRequired,
@@ -356,7 +364,7 @@ class LemonTradingService {
   /**
    * Get MTF margin info for a specific stock
    */
-  private async getMTFMarginInfo(userId: string, symbol: string, price: number, quantity: number): Promise<any> {
+  private async getMTFMarginInfo(userId: string, symbol: string, price: number, _quantity: number): Promise<any> {
     try {
       const accessToken = await this.getAccessToken(userId);
       if (!accessToken) {
@@ -383,7 +391,7 @@ class LemonTradingService {
         transactionType: 'BUY',
         price: price.toString(),
         quantity: '1', // Get margin for 1 share, we'll multiply later
-        productType: 'MTF'
+        productType: 'MARGIN'  // Use MARGIN for margin-info API (MTF not supported here)
       };
 
       const response = await fetch(`${this.LEMON_BASE_URL}/api-trading/api/v2/margin-info`, {
