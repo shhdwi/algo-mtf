@@ -772,7 +772,7 @@ async function analyzeSingleStock(
     try {
       const parsedDate = parseDate(dateParam);
       targetDate = formatDateForAPI(parsedDate);
-    } catch (error) {
+    } catch {
       return { 
         isin: isinParam, 
         exchange, 

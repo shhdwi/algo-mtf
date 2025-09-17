@@ -50,6 +50,7 @@ export default function TestDailyScanPage() {
     } catch (error) {
       setResult({
         success: false,
+        message: 'Test failed',
         error: error instanceof Error ? error.message : 'Unknown error occurred'
       });
     } finally {

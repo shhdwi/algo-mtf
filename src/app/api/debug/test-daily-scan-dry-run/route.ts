@@ -101,11 +101,11 @@ export async function POST(request: NextRequest) {
         user_id: user.id,
         full_name: user.full_name,
         phone_number: user.phone_number,
-        total_capital: user.trading_preferences.total_capital,
-        allocation_percentage: user.trading_preferences.allocation_percentage,
-        max_concurrent_positions: user.trading_preferences.max_concurrent_positions,
-        daily_loss_limit_percentage: user.trading_preferences.daily_loss_limit_percentage,
-        stop_loss_percentage: user.trading_preferences.stop_loss_percentage,
+        total_capital: (user.trading_preferences as any).total_capital,
+        allocation_percentage: (user.trading_preferences as any).allocation_percentage,
+        max_concurrent_positions: (user.trading_preferences as any).max_concurrent_positions,
+        daily_loss_limit_percentage: (user.trading_preferences as any).daily_loss_limit_percentage,
+        stop_loss_percentage: (user.trading_preferences as any).stop_loss_percentage,
         is_real_trading_enabled: user.is_real_trading_enabled
       };
 
@@ -146,18 +146,18 @@ export async function POST(request: NextRequest) {
           console.log(`  📈 Simulating order for ${signal.symbol}...`);
           
           // Calculate position size (same as production)
-          const allocationAmount = (userData.total_capital * userData.allocation_percentage) / 100;
+          const _allocationAmount = (userData.total_capital * userData.allocation_percentage) / 100;
           const positionSizeResult = await lemonService.calculatePositionSize(
             user.id,
             signal.symbol,
-            allocationAmount
+            signal.current_price
           );
 
-          if (!positionSizeResult.success) {
-            throw new Error(positionSizeResult.error || 'Position size calculation failed');
+          if (!positionSizeResult) {
+            throw new Error('Position size calculation failed');
           }
 
-          const quantity = positionSizeResult.quantity!;
+          const quantity = positionSizeResult.quantity;
           const investmentAmount = quantity * signal.current_price;
 
           // DRY RUN: Simulate the order without actually placing it
@@ -170,14 +170,14 @@ export async function POST(request: NextRequest) {
             status: 'SIMULATED_SUCCESS',
             dry_run: true,
             signal_data: {
-              rsi: signal.rsi,
-              rsi_sma: signal.rsi_sma,
-              volume_ratio: signal.volume_ratio,
-              price_change: signal.price_change
+              signal: signal.signal,
+              symbol: signal.symbol,
+              current_price: signal.current_price,
+              entry_reason: 'Entry signal detected'
             },
             mtf_info: {
               margin_required: positionSizeResult.marginRequired,
-              leverage_used: positionSizeResult.leverageUsed
+              leverage_used: positionSizeResult.leverage
             },
             timestamp: new Date().toISOString()
           };
