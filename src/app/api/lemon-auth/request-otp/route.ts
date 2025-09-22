@@ -51,7 +51,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         message: 'OTP sent successfully',
-        request_id: result.data.request_id,
         phone_number: phone_number,
         lemon_response: result
       });
@@ -80,6 +79,7 @@ export async function GET() {
     usage: 'POST with { "phone_number": "+91XXXXXXXXXX" }',
     example: {
       phone_number: '+911234567890'
-    }
+    },
+    note: 'Client ID is automatically generated. No request_id returned - use phone_number for OTP validation.'
   });
 }

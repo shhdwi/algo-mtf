@@ -61,9 +61,9 @@ export async function GET() {
   return NextResponse.json({
     message: 'Lemon API OTP Validation',
     description: 'Validate OTP received via SMS',
-    usage: 'POST with { "request_id": "uuid", "otp": "123456" }',
+    usage: 'POST with { "phone_number": "+91XXXXXXXXXX", "otp": "123456" }',
     example: {
-      request_id: 'abc-123-def',
+      phone_number: '+911234567890',
       otp: '123456'
     }
   });
