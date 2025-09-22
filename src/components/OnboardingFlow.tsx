@@ -205,7 +205,6 @@ export default function OnboardingFlow() {
 
       const result = await response.json();
       if (result.success) {
-        setFormData(prev => ({ ...prev, request_id: result.request_id }));
         setOtpSent(true);
         setApiKeyGenStep('otp');
         alert('OTP sent to your phone number');
@@ -221,7 +220,7 @@ export default function OnboardingFlow() {
   };
 
   const validateOTP = async () => {
-    if (!formData.otp_code || !formData.request_id) {
+    if (!formData.otp_code || !formData.lemon_phone) {
       alert('Please enter the OTP');
       return;
     }
@@ -232,14 +231,14 @@ export default function OnboardingFlow() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          request_id: formData.request_id,
+          phone_number: formData.lemon_phone,
           otp: formData.otp_code
         })
       });
 
       const result = await response.json();
       if (result.success) {
-        setFormData(prev => ({ ...prev, session_token: result.session_token }));
+        setFormData(prev => ({ ...prev, session_token: result.refresh_token }));
         setApiKeyGenStep('pin');
         alert('OTP verified! Please enter your PIN');
       } else {
@@ -268,7 +267,7 @@ export default function OnboardingFlow() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          session_token: formData.session_token,
+          refresh_token: formData.session_token,
           pin: formData.lemon_pin
         })
       });
@@ -281,13 +280,15 @@ export default function OnboardingFlow() {
         return;
       }
 
-      // Step 2: Generate API Keys
+      // Step 2: Generate API Keys (using the client_id from OTP request)
+      const clientId = `CLIENT_${Date.now()}_${formData.lemon_phone.replace(/\D/g, '').slice(-4)}`;
+      
       const keyResponse = await fetch('/api/lemon-auth/generate-api-key', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          auth_token: pinResult.auth_token,
-          phone_number: formData.lemon_phone
+          client_id: clientId,
+          ip_whitelist: ['0.0.0.0/0'] // Allow all IPs
         })
       });
 
@@ -296,7 +297,7 @@ export default function OnboardingFlow() {
         // Auto-populate the API credentials
         setFormData(prev => ({
           ...prev,
-          auth_token: pinResult.auth_token,
+          auth_token: pinResult.access_token,
           client_id: keyResult.api_credentials.client_id,
           public_key: keyResult.api_credentials.public_key,
           private_key: keyResult.api_credentials.private_key

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const LEMON_BASE_URL = 'https://api.lemon.markets';
+const LEMON_BASE_URL = 'https://cs-prod.lemonn.co.in';
 
 export async function POST(request: NextRequest) {
   try {
@@ -22,7 +22,8 @@ export async function POST(request: NextRequest) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        phone_number: phone_number
+        phone_number: phone_number,
+        client_id: `CLIENT_${Date.now()}` // Generate unique client_id as required by API
       })
     });
 

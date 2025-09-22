@@ -1,28 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const LEMON_BASE_URL = 'https://api.lemon.markets';
+const LEMON_BASE_URL = 'https://cs-prod.lemonn.co.in';
 
 export async function POST(request: NextRequest) {
   try {
-    const { request_id, otp } = await request.json();
+    const { phone_number, otp } = await request.json();
 
-    if (!request_id || !otp) {
+    if (!phone_number || !otp) {
       return NextResponse.json({
         success: false,
-        error: 'Request ID and OTP are required'
+        error: 'Phone number and OTP are required'
       }, { status: 400 });
     }
 
-    console.log(`🔐 Validating OTP for request: ${request_id}`);
+    console.log(`🔐 Validating OTP for phone: ${phone_number}`);
 
-    // Validate OTP with Lemon API
+    // Validate OTP with Lemon API (according to documentation)
     const response = await fetch(`${LEMON_BASE_URL}/api-trading/api/v1/validate_otp`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        request_id: request_id,
+        phone_number: phone_number,
         otp: otp
       })
     });
@@ -30,13 +30,13 @@ export async function POST(request: NextRequest) {
     const result = await response.json();
 
     if (result.status === 'success') {
-      console.log(`✅ OTP validated successfully for request: ${request_id}`);
+      console.log(`✅ OTP validated successfully for phone: ${phone_number}`);
       
       return NextResponse.json({
         success: true,
         message: 'OTP validated successfully',
-        request_id: request_id,
-        session_token: result.data.session_token, // Need this for PIN validation
+        phone_number: phone_number,
+        refresh_token: result.data.refresh_token, // According to documentation
         lemon_response: result
       });
     } else {

@@ -1,28 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const LEMON_BASE_URL = 'https://api.lemon.markets';
+const LEMON_BASE_URL = 'https://cs-prod.lemonn.co.in';
 
 export async function POST(request: NextRequest) {
   try {
-    const { session_token, pin } = await request.json();
+    const { refresh_token, pin } = await request.json();
 
-    if (!session_token || !pin) {
+    if (!refresh_token || !pin) {
       return NextResponse.json({
         success: false,
-        error: 'Session token and PIN are required'
+        error: 'Refresh token and PIN are required'
       }, { status: 400 });
     }
 
-    console.log(`🔑 Validating PIN for session: ${session_token.substring(0, 10)}...`);
+    console.log(`🔑 Validating PIN with refresh token...`);
 
-    // Validate PIN with Lemon API
+    // Validate PIN with Lemon API (according to documentation)
     const response = await fetch(`${LEMON_BASE_URL}/api-trading/api/v1/validate_pin`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'x-refresh-token': refresh_token // Required header according to docs
       },
       body: JSON.stringify({
-        session_token: session_token,
         pin: pin
       })
     });
@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         message: 'PIN validated successfully',
-        auth_token: result.data.auth_token, // Need this for API key generation
+        access_token: result.data.access_token, // According to documentation
         lemon_response: result
       });
     } else {
