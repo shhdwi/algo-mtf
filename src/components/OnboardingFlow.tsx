@@ -48,6 +48,11 @@ export default function OnboardingFlow() {
   const [loading, setLoading] = useState(false);
   const [initializing, setInitializing] = useState(true);
   const [userToken, setUserToken] = useState<string | null>(null);
+  
+  // API key generation states
+  const [apiKeyGenStep, setApiKeyGenStep] = useState<'phone' | 'otp' | 'pin' | 'generating' | 'complete'>('phone');
+  const [_otpSent, setOtpSent] = useState(false);
+  const [_apiKeysGenerated, setApiKeysGenerated] = useState(false);
   const [formData, setFormData] = useState({
     // Step 1: Account
     email: '',
@@ -62,10 +67,18 @@ export default function OnboardingFlow() {
     daily_loss_limit_percentage: '5',
     stop_loss_percentage: '2.5',
     
-    // Step 3: API Configuration (Only 3 required fields)
+    // Step 3: Lemon API Setup (Automated generation)
+    lemon_phone: '',
+    lemon_pin: '',
+    otp_code: '',
+    
+    // Generated automatically (hidden from user)
     client_id: '',
     public_key: '',
     private_key: '',
+    request_id: '',
+    session_token: '',
+    auth_token: '',
     
     // Step 4: Trading Settings
     max_concurrent_positions: '10'
@@ -172,6 +185,138 @@ export default function OnboardingFlow() {
   React.useEffect(() => {
     checkOnboardingStatus();
   }, []);
+
+  // API Key Generation Functions
+  const requestOTP = async () => {
+    if (!formData.lemon_phone) {
+      alert('Please enter your phone number');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await fetch('/api/lemon-auth/request-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone_number: formData.lemon_phone
+        })
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        setFormData(prev => ({ ...prev, request_id: result.request_id }));
+        setOtpSent(true);
+        setApiKeyGenStep('otp');
+        alert('OTP sent to your phone number');
+      } else {
+        alert(result.error || 'Failed to send OTP');
+      }
+    } catch (err) {
+      console.error('Error sending OTP:', err);
+      alert('Error sending OTP');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const validateOTP = async () => {
+    if (!formData.otp_code || !formData.request_id) {
+      alert('Please enter the OTP');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await fetch('/api/lemon-auth/validate-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          request_id: formData.request_id,
+          otp: formData.otp_code
+        })
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        setFormData(prev => ({ ...prev, session_token: result.session_token }));
+        setApiKeyGenStep('pin');
+        alert('OTP verified! Please enter your PIN');
+      } else {
+        alert(result.error || 'Invalid OTP');
+      }
+    } catch (err) {
+      console.error('Error validating OTP:', err);
+      alert('Error validating OTP');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const validatePINAndGenerateKeys = async () => {
+    if (!formData.lemon_pin || !formData.session_token) {
+      alert('Please enter your PIN');
+      return;
+    }
+
+    setLoading(true);
+    setApiKeyGenStep('generating');
+    
+    try {
+      // Step 1: Validate PIN
+      const pinResponse = await fetch('/api/lemon-auth/validate-pin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_token: formData.session_token,
+          pin: formData.lemon_pin
+        })
+      });
+
+      const pinResult = await pinResponse.json();
+      if (!pinResult.success) {
+        alert(pinResult.error || 'Invalid PIN');
+        setApiKeyGenStep('pin');
+        setLoading(false);
+        return;
+      }
+
+      // Step 2: Generate API Keys
+      const keyResponse = await fetch('/api/lemon-auth/generate-api-key', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          auth_token: pinResult.auth_token,
+          phone_number: formData.lemon_phone
+        })
+      });
+
+      const keyResult = await keyResponse.json();
+      if (keyResult.success) {
+        // Auto-populate the API credentials
+        setFormData(prev => ({
+          ...prev,
+          auth_token: pinResult.auth_token,
+          client_id: keyResult.api_credentials.client_id,
+          public_key: keyResult.api_credentials.public_key,
+          private_key: keyResult.api_credentials.private_key
+        }));
+        
+        setApiKeysGenerated(true);
+        setApiKeyGenStep('complete');
+        alert('API keys generated successfully! You can now proceed to complete your setup.');
+      } else {
+        alert(keyResult.error || 'Failed to generate API keys');
+        setApiKeyGenStep('pin');
+      }
+    } catch (err) {
+      console.error('Error generating API keys:', err);
+      alert('Error generating API keys');
+      setApiKeyGenStep('pin');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSubmitStep = async () => {
     setLoading(true);
@@ -398,63 +543,142 @@ export default function OnboardingFlow() {
       case 3:
         return (
           <div className="space-y-8">
-            <div>
-              <h2 className="text-3xl font-bold text-slate-900 mb-2">Connect Your Trading API</h2>
-              <p className="text-lg text-slate-600">Enter your Lemon API credentials to enable real trading</p>
+            <div className="text-center">
+              <h2 className="text-3xl font-bold text-slate-900 mb-4">
+                🔐 Automated Lemon API Setup
+              </h2>
+              <p className="text-slate-600 text-lg leading-relaxed max-w-2xl mx-auto">
+                We&apos;ll automatically generate your Lemon API credentials. Just provide your phone number and PIN.
+              </p>
             </div>
             
-            <div className="space-y-6">
-              <div>
-                <label className="block text-sm font-bold text-slate-800 mb-3">
-                  Client ID <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={formData.client_id}
-                  onChange={(e) => setFormData({...formData, client_id: e.target.value})}
-                  className="w-full px-6 py-4 border-2 border-slate-300 rounded-2xl bg-white focus:ring-4 focus:ring-blue-200 focus:border-blue-400 transition-all duration-200 text-slate-900 placeholder-slate-500 shadow-lg hover:border-blue-300 font-mono text-lg"
-                  placeholder="CLIENT123"
-                  required
-                />
-                <p className="text-sm font-medium text-blue-600 mt-2">
-                  🆔 Your unique client identifier from Lemon API
-                </p>
+            {/* Phone Number Step */}
+            {apiKeyGenStep === 'phone' && (
+              <div className="space-y-6">
+                <div>
+                  <label className="block text-sm font-bold text-slate-800 mb-3">
+                    Lemon API Phone Number <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="tel"
+                    value={formData.lemon_phone}
+                    onChange={(e) => setFormData({...formData, lemon_phone: e.target.value})}
+                    className="w-full px-6 py-4 border-2 border-slate-300 rounded-2xl bg-white focus:ring-4 focus:ring-blue-200 focus:border-blue-400 transition-all duration-200 text-slate-900 placeholder-slate-500 shadow-lg hover:border-blue-300 text-lg"
+                    placeholder="+911234567890"
+                    required
+                  />
+                  <p className="text-sm font-medium text-blue-600 mt-2">
+                    📱 Your registered phone number with Lemon API
+                  </p>
+                </div>
+                
+                <button
+                  type="button"
+                  onClick={requestOTP}
+                  disabled={loading || !formData.lemon_phone}
+                  className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-bold py-4 px-8 rounded-2xl transition-all duration-300 transform hover:scale-105 shadow-xl disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none text-lg"
+                >
+                  {loading ? 'Sending OTP...' : 'Send OTP'}
+                </button>
               </div>
+            )}
 
-              <div>
-                <label className="block text-sm font-bold text-slate-800 mb-3">
-                  API Public Key <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={formData.public_key}
-                  onChange={(e) => setFormData({...formData, public_key: e.target.value})}
-                  className="w-full px-6 py-4 border-2 border-slate-300 rounded-2xl bg-white focus:ring-4 focus:ring-green-200 focus:border-green-400 transition-all duration-200 text-slate-900 placeholder-slate-500 shadow-lg hover:border-green-300 font-mono"
-                  placeholder="Enter your Lemon API public key"
-                  required
-                />
-                <p className="text-sm font-medium text-green-600 mt-2">
-                  🔑 Your Lemon API public key (will be validated with live API test)
-                </p>
+            {/* OTP Verification Step */}
+            {apiKeyGenStep === 'otp' && (
+              <div className="space-y-6">
+                <div className="text-center">
+                  <p className="text-slate-600 mb-4">
+                    OTP sent to <strong>{formData.lemon_phone}</strong>
+                  </p>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-bold text-slate-800 mb-3">
+                    Enter OTP <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.otp_code}
+                    onChange={(e) => setFormData({...formData, otp_code: e.target.value})}
+                    className="w-full px-6 py-4 border-2 border-slate-300 rounded-2xl bg-white focus:ring-4 focus:ring-blue-200 focus:border-blue-400 transition-all duration-200 text-slate-900 placeholder-slate-500 shadow-lg hover:border-blue-300 text-lg text-center tracking-widest"
+                    placeholder="123456"
+                    maxLength={6}
+                    required
+                  />
+                </div>
+                
+                <button
+                  type="button"
+                  onClick={validateOTP}
+                  disabled={loading || !formData.otp_code}
+                  className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-bold py-4 px-8 rounded-2xl transition-all duration-300 transform hover:scale-105 shadow-xl disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none text-lg"
+                >
+                  {loading ? 'Verifying OTP...' : 'Verify OTP'}
+                </button>
               </div>
+            )}
 
-              <div>
-                <label className="block text-sm font-bold text-slate-800 mb-3">
-                  API Private Key <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="password"
-                  value={formData.private_key}
-                  onChange={(e) => setFormData({...formData, private_key: e.target.value})}
-                  className="w-full px-6 py-4 border-2 border-slate-300 rounded-2xl bg-white focus:ring-4 focus:ring-purple-200 focus:border-purple-400 transition-all duration-200 text-slate-900 placeholder-slate-500 shadow-lg hover:border-purple-300 font-mono"
-                  placeholder="Enter your Lemon API private key"
-                  required
-                />
-                <p className="text-sm font-medium text-purple-600 mt-2">
-                  🔐 Your Lemon API private key (will be tested for authentication)
-                </p>
+            {/* PIN Entry and API Key Generation Step */}
+            {(apiKeyGenStep === 'pin' || apiKeyGenStep === 'generating') && (
+              <div className="space-y-6">
+                <div>
+                  <label className="block text-sm font-bold text-slate-800 mb-3">
+                    Lemon API PIN <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="password"
+                    value={formData.lemon_pin}
+                    onChange={(e) => setFormData({...formData, lemon_pin: e.target.value})}
+                    className="w-full px-6 py-4 border-2 border-slate-300 rounded-2xl bg-white focus:ring-4 focus:ring-blue-200 focus:border-blue-400 transition-all duration-200 text-slate-900 placeholder-slate-500 shadow-lg hover:border-blue-300 text-lg text-center tracking-widest"
+                    placeholder="****"
+                    maxLength={4}
+                    required
+                    disabled={apiKeyGenStep === 'generating'}
+                  />
+                  <p className="text-sm font-medium text-blue-600 mt-2">
+                    🔑 Your 4-digit Lemon API PIN
+                  </p>
+                </div>
+                
+                <button
+                  type="button"
+                  onClick={validatePINAndGenerateKeys}
+                  disabled={loading || !formData.lemon_pin || apiKeyGenStep === 'generating'}
+                  className="w-full bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white font-bold py-4 px-8 rounded-2xl transition-all duration-300 transform hover:scale-105 shadow-xl disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none text-lg"
+                >
+                  {apiKeyGenStep === 'generating' ? 'Generating API Keys...' : 'Generate API Keys'}
+                </button>
               </div>
-            </div>
+            )}
+
+            {/* API Keys Generated Successfully */}
+            {apiKeyGenStep === 'complete' && (
+              <div className="space-y-6">
+                <div className="text-center p-6 bg-green-50 border-2 border-green-200 rounded-2xl">
+                  <div className="text-green-600 text-4xl mb-4">✅</div>
+                  <h3 className="text-xl font-bold text-green-800 mb-2">
+                    API Keys Generated Successfully!
+                  </h3>
+                  <p className="text-green-700 mb-4">
+                    Your Lemon API credentials have been securely generated and stored.
+                    IP whitelist is set to allow all addresses.
+                  </p>
+                  <div className="mt-4 p-4 bg-green-100 rounded-xl">
+                    <p className="text-sm text-green-800 font-mono">
+                      Client ID: {formData.client_id}
+                    </p>
+                  </div>
+                </div>
+                
+                <button
+                  type="button"
+                  onClick={() => setCurrentStep(4)}
+                  className="w-full bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white font-bold py-4 px-8 rounded-2xl transition-all duration-300 transform hover:scale-105 shadow-xl text-lg"
+                >
+                  Continue to Final Setup
+                </button>
+              </div>
+            )}
 
             <div className="bg-gradient-to-r from-blue-50 via-indigo-50 to-purple-50 border-2 border-blue-200 rounded-2xl p-8 shadow-xl">
               <h3 className="font-bold text-slate-900 mb-4 text-xl flex items-center">
