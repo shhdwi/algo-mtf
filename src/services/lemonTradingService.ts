@@ -591,6 +591,72 @@ class LemonTradingService {
   }
 
   /**
+   * Force refresh access token (for retry scenarios)
+   */
+  private async forceRefreshAccessToken(userId: string): Promise<string | null> {
+    try {
+      console.log(`🔄 Force refreshing access token for user ${userId}...`);
+      
+      // Get user credentials
+      const { data: credentials } = await this.supabase
+        .from('api_credentials')
+        .select('client_id, public_key_encrypted, private_key_encrypted')
+        .eq('user_id', userId)
+        .single();
+
+      if (!credentials) {
+        console.error('No credentials found for user');
+        return null;
+      }
+
+      const clientId = credentials.client_id;
+      const publicKey = this.decrypt(credentials.public_key_encrypted);
+      const privateKey = this.decrypt(credentials.private_key_encrypted);
+
+      // Generate fresh access token using the same method as getAccessToken
+      const { epochTime, signature } = this.generateSignature(clientId, privateKey);
+
+      const tokenResponse = await fetch(`${this.LEMON_BASE_URL}/api-trading/api/v1/generate_access_token`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': publicKey,
+          'x-client-id': clientId,
+          'x-signature': signature,
+          'x-timestamp': epochTime
+        }
+      });
+
+      const tokenResult = await tokenResponse.json();
+
+      if (tokenResult.status === 'success' && tokenResult.data?.access_token) {
+        const accessToken = tokenResult.data.access_token;
+        const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours from now
+
+        // Store the new token
+        await this.supabase
+          .from('api_credentials')
+          .update({
+            access_token_encrypted: this.encrypt(accessToken),
+            token_expires_at: expiresAt.toISOString(),
+            updated_at: new Date().toISOString()
+          })
+          .eq('user_id', userId);
+
+        console.log(`✅ Access token force refreshed successfully for user ${userId}`);
+        return accessToken;
+      } else {
+        console.error('Failed to force refresh token:', tokenResult);
+        return null;
+      }
+
+    } catch (error) {
+      console.error('Error force refreshing access token:', error);
+      return null;
+    }
+  }
+
+  /**
    * Get Last Traded Price (LTP) for a symbol
    */
   async getLTP(symbol: string, exchange: string = 'NSE'): Promise<{last_traded_price: number} | null> {
@@ -669,7 +735,7 @@ class LemonTradingService {
   }
 
   /**
-   * Exit real position via Lemon API
+   * Exit real position via Lemon API with retry mechanism
    */
   async exitRealPosition(userId: string, symbol: string, exitReason: string): Promise<OrderResponse> {
     try {
@@ -686,13 +752,38 @@ class LemonTradingService {
         return { success: false, error: 'Active position not found' };
       }
 
-      // Place sell order
-      const sellOrderResult = await this.placeOrder(userId, {
+      console.log(`🔄 Attempting to exit position: ${symbol} for user ${userId}`);
+
+      // Try placing sell order with retry mechanism for authentication failures
+      let sellOrderResult = await this.placeOrder(userId, {
         symbol,
         transaction_type: 'SELL',
         quantity: position.entry_quantity,
         order_reason: exitReason
       });
+
+      // If authentication failed, refresh token and retry once
+      if (!sellOrderResult.success && 
+          sellOrderResult.lemon_response?.error_code === 'AUTHENTICATION_ERROR') {
+        
+        console.log(`🔄 Authentication failed for SELL order, refreshing token and retrying...`);
+        
+        // Force refresh the access token
+        const newToken = await this.forceRefreshAccessToken(userId);
+        if (newToken) {
+          console.log(`✅ Token refreshed, retrying SELL order for ${symbol}...`);
+          
+          // Retry the sell order with fresh token
+          sellOrderResult = await this.placeOrder(userId, {
+            symbol,
+            transaction_type: 'SELL',
+            quantity: position.entry_quantity,
+            order_reason: exitReason
+          });
+        } else {
+          return { success: false, error: 'Failed to refresh access token for SELL order' };
+        }
+      }
 
       if (sellOrderResult.success) {
         // First create the SELL order record (handle duplicate order IDs)
