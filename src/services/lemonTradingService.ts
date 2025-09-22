@@ -660,10 +660,10 @@ class LemonTradingService {
         headers: {
           'Content-Type': 'application/json',
           'x-api-key': publicKey,
-          'x-client-id': clientId,
-          'x-signature': signature,
-          'x-epoch-time': epochTime  // Use x-epoch-time instead of x-timestamp
-        }
+          'x-epoch-time': epochTime,
+          'x-signature': signature
+        },
+        body: JSON.stringify({ client_id: clientId })  // Add request body like getAccessToken
       });
 
       const tokenResult = await tokenResponse.json();
