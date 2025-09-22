@@ -73,7 +73,8 @@ export default function TestMTFBuySellPage() {
 
       const data = await response.json();
       setResult(data);
-    } catch (error) {
+    } catch (err) {
+      console.error('Test error:', err);
       setResult({
         success: false,
         user_id: formData.user_id,

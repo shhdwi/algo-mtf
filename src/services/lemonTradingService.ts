@@ -661,11 +661,50 @@ class LemonTradingService {
       });
 
       if (sellOrderResult.success) {
-        // Update position status to EXITED
-        await this.supabase
+        // First create the SELL order record (handle duplicate order IDs)
+        let sellOrderRecord;
+        const { data: existingOrder } = await this.supabase
+          .from('real_orders')
+          .select('*')
+          .eq('lemon_order_id', sellOrderResult.order_id)
+          .single();
+
+        if (existingOrder) {
+          // Order ID already exists, use the existing record
+          console.log(`⚠️ Order ID ${sellOrderResult.order_id} already exists, using existing record`);
+          sellOrderRecord = existingOrder;
+        } else {
+          // Create new order record
+          const { data: newOrderRecord, error: sellOrderError } = await this.supabase
+            .from('real_orders')
+            .insert({
+              user_id: userId,
+              lemon_order_id: sellOrderResult.order_id,
+              symbol,
+              transaction_type: 'SELL',
+              order_type: 'MARKET',
+              quantity: position.entry_quantity,
+              order_status: sellOrderResult.order_status || 'PLACED',
+              order_reason: exitReason,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            })
+            .select()
+            .single();
+
+          if (sellOrderError) {
+            console.error('Failed to create SELL order record:', sellOrderError);
+            return { success: false, error: `Failed to create SELL order record: ${sellOrderError.message}` };
+          }
+          
+          sellOrderRecord = newOrderRecord;
+        }
+
+        // Update position status to EXITED using the order UUID
+        const { error: updateError } = await this.supabase
           .from('real_positions')
           .update({
-            exit_order_id: sellOrderResult.order_id,
+            exit_order_id: sellOrderRecord.id, // Use the UUID from real_orders
             status: 'EXITED',
             exit_date: new Date().toISOString().split('T')[0],
             exit_time: new Date().toISOString(),
@@ -675,6 +714,11 @@ class LemonTradingService {
           .eq('user_id', userId)
           .eq('symbol', symbol)
           .eq('status', 'ACTIVE');
+
+        if (updateError) {
+          console.error('Failed to update position to EXITED:', updateError);
+          return { success: false, error: `Failed to update position status: ${updateError.message}` };
+        }
 
         console.log(`✅ Real position exited: ${symbol} for user ${userId} - Reason: ${exitReason}`);
       }

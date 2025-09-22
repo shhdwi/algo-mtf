@@ -5,12 +5,12 @@ const http = require('http');
 
 // Configuration
 const config = {
-  baseUrl: 'https://algo-mtf.vercel.app', // Change to http://localhost:3001 for local testing
+  baseUrl: 'http://localhost:3001', // Change to https://algo-mtf.vercel.app for production testing
   testParams: {
     user_id: '053c5dc0-0dce-457c-9051-77dde1e4e5da', // Change this to your test user ID
     symbol: 'RELIANCE',
     quantity: 1, // Optional - will be calculated from MTF margin if not provided
-    test_mode: true, // Set to false for real trading (DANGEROUS!)
+    test_mode: false, // Now places REAL orders through Lemon API!
     delay_between_orders: 3000 // 3 seconds between BUY and SELL
   }
 };
@@ -19,7 +19,7 @@ console.log('🧪 MTF BUY-SELL Test Script');
 console.log('=' .repeat(50));
 console.log(`📊 Testing: ${config.testParams.symbol}`);
 console.log(`👤 User ID: ${config.testParams.user_id}`);
-console.log(`🔧 Mode: ${config.testParams.test_mode ? 'SIMULATION' : '⚠️  REAL TRADING ⚠️'}`);
+console.log(`🔧 Mode: ${config.testParams.test_mode ? 'SIMULATION' : '🔥 REAL TRADING 🔥'}`);
 console.log(`⏱️  Delay: ${config.testParams.delay_between_orders}ms`);
 console.log('=' .repeat(50));
 

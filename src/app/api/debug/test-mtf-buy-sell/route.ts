@@ -172,27 +172,17 @@ export async function POST(request: NextRequest) {
     let buyOrderResult: any = null;
 
     try {
-      if (test_mode) {
-        // Simulate BUY order
-        buyOrderResult = {
-          success: true,
-          order_id: `TEST_BUY_${Date.now()}`,
-          order_status: 'SIMULATED',
-          lemon_response: {
-            message: 'Test BUY order - not actually placed',
-            simulated: true
-          }
-        };
-      } else {
-        // Place real BUY order
-        buyOrderResult = await lemonService.placeOrder(user_id, {
-          symbol,
-          transaction_type: 'BUY',
-          quantity,
-          order_reason: 'MTF_BUY_SELL_TEST',
-          scanner_signal_id: `MTF_TEST_BUY_${symbol}_${Date.now()}`
-        });
-      }
+      // Always place real BUY order using the same service as daily scan
+      console.log(`🔥 Placing REAL BUY order for ${quantity} shares of ${symbol}...`);
+      buyOrderResult = await lemonService.placeOrder(user_id, {
+        symbol,
+        transaction_type: 'BUY',
+        quantity,
+        order_reason: 'MTF_BUY_SELL_TEST_BUY',
+        scanner_signal_id: `MTF_TEST_BUY_${symbol}_${Date.now()}`
+      });
+      
+      console.log('🔥 BUY Order Result:', buyOrderResult);
 
       testResult.orders.buy_order = buyOrderResult;
       testResult.summary.buy_order_success = buyOrderResult.success;
@@ -203,7 +193,7 @@ export async function POST(request: NextRequest) {
         success: buyOrderResult.success,
         data: buyOrderResult,
         message: buyOrderResult.success 
-          ? `✅ ${test_mode ? 'SIMULATED' : 'REAL'} BUY order placed: ${quantity} shares of ${symbol} | Order ID: ${buyOrderResult.order_id}`
+          ? `✅ REAL BUY order placed: ${quantity} shares of ${symbol} | Order ID: ${buyOrderResult.order_id}`
           : `❌ BUY order failed: ${buyOrderResult.error}`,
         error: buyOrderResult.success ? undefined : buyOrderResult.error,
         timestamp: new Date().toISOString()
@@ -232,60 +222,109 @@ export async function POST(request: NextRequest) {
     let positionRecord: any = null;
 
     try {
-      if (!test_mode) {
-        // Create real position record
-        const currentPrice = positionSize?.amount ? positionSize.amount / quantity : 2500;
+      // Always create real position record (same as daily scan does)
+      const currentPrice = positionSize?.amount ? positionSize.amount / quantity : 2500;
+      
+      // First, check if there's an existing ACTIVE position for this user/symbol (for testing)
+      console.log(`🔍 Checking for existing ACTIVE positions for ${user_id}/${symbol}...`);
+      const { data: existingPositions, error: checkError } = await supabase
+        .from('real_positions')
+        .select('*')
+        .eq('user_id', user_id)
+        .eq('symbol', symbol)
+        .eq('status', 'ACTIVE');
+
+      if (checkError) {
+        console.log('⚠️ Error checking existing positions:', checkError.message);
+      } else if (existingPositions && existingPositions.length > 0) {
+        console.log(`⚠️ Found ${existingPositions.length} existing ACTIVE position(s). Updating status to EXITED for testing...`);
         
-        const { data: createdPosition, error: positionError } = await supabase
+        // Update existing positions to EXITED to avoid unique constraint violation
+        const { error: updateError } = await supabase
           .from('real_positions')
-          .insert({
-            user_id,
-            symbol,
-            entry_order_id: buyOrderResult.order_id,
-            entry_quantity: quantity,
-            entry_price: currentPrice,
-            current_price: currentPrice,
-            entry_date: new Date().toISOString().split('T')[0],
-            entry_time: new Date().toISOString(),
-            pnl_amount: 0,
-            pnl_percentage: 0,
-            status: 'ACTIVE',
-            trailing_level: 0,
-            scanner_signal_id: `MTF_TEST_BUY_${symbol}_${Date.now()}`,
-            created_at: new Date().toISOString(),
+          .update({ 
+            status: 'EXITED',
+            exit_reason: 'CLEARED_FOR_TEST',
+            exit_date: new Date().toISOString().split('T')[0],
+            exit_time: new Date().toISOString(),
             updated_at: new Date().toISOString()
           })
-          .select()
-          .single();
+          .eq('user_id', user_id)
+          .eq('symbol', symbol)
+          .eq('status', 'ACTIVE');
 
-        if (positionError) {
-          throw new Error(`Position creation failed: ${positionError.message}`);
+        if (updateError) {
+          console.log('⚠️ Error updating existing positions:', updateError.message);
+        } else {
+          console.log('✅ Existing positions cleared for test');
         }
+      }
+      
+      console.log(`🔥 Creating REAL order record for ${symbol}...`);
+      // First create the order record
+      const { data: orderRecord, error: orderError } = await supabase
+        .from('real_orders')
+        .insert({
+          user_id,
+          lemon_order_id: buyOrderResult.order_id,
+          symbol,
+          transaction_type: 'BUY',
+          order_type: 'MARKET',
+          quantity,
+          price: currentPrice,
+          order_status: buyOrderResult.order_status || 'PLACED',
+          order_reason: 'MTF_BUY_SELL_TEST_BUY',
+          scanner_signal_id: null, // This is UUID type, so we'll leave it null for test
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .select()
+        .single();
 
-        positionRecord = createdPosition;
-        testResult.positions.created_position = positionRecord;
-        testResult.summary.position_created = true;
-      } else {
-        // Simulate position creation
-        positionRecord = {
-          id: `TEST_POSITION_${Date.now()}`,
+      if (orderError) {
+        throw new Error(`Order record creation failed: ${orderError.message}`);
+      }
+
+      console.log(`🔥 Creating REAL position record for ${symbol}...`);
+      // Then create the position record using the order UUID
+      const { data: createdPosition, error: positionError } = await supabase
+        .from('real_positions')
+        .insert({
           user_id,
           symbol,
+          entry_order_id: orderRecord.id, // Use the UUID from real_orders
           entry_quantity: quantity,
-          entry_price: 2500,
+          entry_price: currentPrice,
+          current_price: currentPrice,
+          entry_date: new Date().toISOString().split('T')[0],
+          entry_time: new Date().toISOString(),
+          pnl_amount: 0,
+          pnl_percentage: 0,
           status: 'ACTIVE',
-          simulated: true
-        };
-        testResult.positions.created_position = positionRecord;
-        testResult.summary.position_created = true;
+          trailing_level: 0,
+          scanner_signal_id: `MTF_TEST_BUY_${symbol}_${Date.now()}`,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+
+      if (positionError) {
+        throw new Error(`Position creation failed: ${positionError.message}`);
       }
+
+      positionRecord = createdPosition;
+      testResult.positions.created_position = positionRecord;
+      testResult.summary.position_created = true;
+      
+      console.log('🔥 Position created:', positionRecord);
 
       testResult.steps.push({
         step: 4,
         name: 'Position Record Creation',
         success: true,
         data: positionRecord,
-        message: `✅ ${test_mode ? 'SIMULATED' : 'REAL'} position created: ${quantity} shares of ${symbol} @ ₹${positionRecord.entry_price || 2500}`,
+        message: `✅ REAL position created: ${quantity} shares of ${symbol} @ ₹${positionRecord.entry_price || 2500}`,
         timestamp: new Date().toISOString()
       });
 
@@ -321,25 +360,15 @@ export async function POST(request: NextRequest) {
     let sellOrderResult: any = null;
 
     try {
-      if (test_mode) {
-        // Simulate SELL order
-        sellOrderResult = {
-          success: true,
-          order_id: `TEST_SELL_${Date.now()}`,
-          order_status: 'SIMULATED',
-          lemon_response: {
-            message: 'Test SELL order - not actually placed',
-            simulated: true
-          }
-        };
-      } else {
-        // Place real SELL order using exitRealPosition method
-        sellOrderResult = await lemonService.exitRealPosition(
-          user_id,
-          symbol,
-          'MTF_BUY_SELL_TEST_EXIT'
-        );
-      }
+      // Always place real SELL order using the same service as monitor API
+      console.log(`🔥 Placing REAL SELL order using exitRealPosition for ${symbol}...`);
+      sellOrderResult = await lemonService.exitRealPosition(
+        user_id,
+        symbol,
+        'MTF_BUY_SELL_TEST_EXIT'
+      );
+      
+      console.log('🔥 SELL Order Result:', sellOrderResult);
 
       testResult.orders.sell_order = sellOrderResult;
       testResult.summary.sell_order_success = sellOrderResult.success;
@@ -350,7 +379,7 @@ export async function POST(request: NextRequest) {
         success: sellOrderResult.success,
         data: sellOrderResult,
         message: sellOrderResult.success 
-          ? `✅ ${test_mode ? 'SIMULATED' : 'REAL'} SELL order placed: ${quantity} shares of ${symbol} | Order ID: ${sellOrderResult.order_id}`
+          ? `✅ REAL SELL order placed: ${quantity} shares of ${symbol} | Order ID: ${sellOrderResult.order_id}`
           : `❌ SELL order failed: ${sellOrderResult.error}`,
         error: sellOrderResult.success ? undefined : sellOrderResult.error,
         timestamp: new Date().toISOString()
@@ -371,8 +400,13 @@ export async function POST(request: NextRequest) {
     console.log('🔍 Step 7: Verifying position closure...');
     
     try {
-      if (!test_mode && sellOrderResult?.success) {
-        // Check if position was properly closed
+      if (sellOrderResult?.success) {
+        // Always check if position was properly closed (real verification)
+        console.log(`🔥 Verifying REAL position closure for ${symbol}...`);
+        
+        // Give the system a moment to update the position status
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
         const { data: finalPosition, error: fetchError } = await supabase
           .from('real_positions')
           .select('*')
@@ -385,13 +419,15 @@ export async function POST(request: NextRequest) {
           testResult.positions.final_position = finalPosition;
           testResult.summary.position_closed = finalPosition.status === 'EXITED';
           
+          console.log('🔥 Final position status:', finalPosition.status);
+          
           testResult.steps.push({
             step: 7,
             name: 'Position Closure Verification',
             success: finalPosition.status === 'EXITED',
             data: finalPosition,
             message: finalPosition.status === 'EXITED' 
-              ? `✅ Position successfully closed: Status = ${finalPosition.status}`
+              ? `✅ REAL position successfully closed: Status = ${finalPosition.status}`
               : `⚠️ Position status: ${finalPosition.status} (expected: EXITED)`,
             timestamp: new Date().toISOString()
           });
@@ -406,14 +442,14 @@ export async function POST(request: NextRequest) {
           });
         }
       } else {
-        // Test mode - simulate verification
-        testResult.summary.position_closed = sellOrderResult?.success || false;
+        // SELL order failed - no position closure expected
+        testResult.summary.position_closed = false;
         testResult.steps.push({
           step: 7,
           name: 'Position Closure Verification',
-          success: true,
-          data: { simulated: true, sell_success: sellOrderResult?.success },
-          message: `✅ SIMULATED position closure: ${sellOrderResult?.success ? 'SUCCESS' : 'FAILED'}`,
+          success: false,
+          data: { sell_failed: true },
+          message: `❌ Position closure not attempted - SELL order failed`,
           timestamp: new Date().toISOString()
         });
       }
