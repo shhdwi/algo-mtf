@@ -18,9 +18,9 @@ async function monitorRealTradingExits(sendWhatsApp: boolean = true) {
       process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl2dnFneHF4bXNjY3N3bXV3dmRqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc0MTgyNjIsImV4cCI6MjA3Mjk5NDI2Mn0.T9-4zMdNu5WoO4QG7TttDULjaDQybl2ZVkS8xvIullI'
     );
 
-    // Get all active real positions
+    // Get all active user positions
     const { data: realPositions, error: positionsError } = await supabase
-      .from('real_positions')
+      .from('user_positions')
       .select(`
         *,
         users!inner(full_name, phone_number)
@@ -40,9 +40,16 @@ async function monitorRealTradingExits(sendWhatsApp: boolean = true) {
     let totalExitsExecuted = 0;
     let totalExitsFailed = 0;
     const exitResults: any[] = [];
+    let consecutiveFailures = 0;
+    const maxConsecutiveFailures = 15; // Circuit breaker threshold
 
     // Monitor each real position for exit conditions
     for (const position of realPositions || []) {
+      // Circuit breaker: Stop processing if too many consecutive failures
+      if (consecutiveFailures >= maxConsecutiveFailures) {
+        console.log(`🚨 Circuit breaker activated: ${consecutiveFailures} consecutive failures. Stopping further processing.`);
+        break;
+      }
       try {
         console.log(`🔍 Monitoring real position: ${position.symbol} for user ${position.user_id}`);
 
@@ -56,62 +63,75 @@ async function monitorRealTradingExits(sendWhatsApp: boolean = true) {
         const userStopLossPercentage = userPrefs?.stop_loss_percentage || 2.5; // Default to 2.5% if not found
         console.log(`⚙️ User stop loss setting: ${userStopLossPercentage}%`);
 
-        // Fetch live current price for accurate monitoring
-        console.log(`📊 Fetching live price for ${position.symbol}...`);
-        const ltpData = await lemonService.getLTP(position.symbol, 'NSE');
-        const livePrice = ltpData?.last_traded_price || position.current_price;
+        // Use the same price monitoring system as algorithm positions
+        console.log(`📊 Analyzing exit conditions for ${position.symbol}...`);
         
-        console.log(`💰 ${position.symbol}: Entry ₹${position.entry_price} → Live ₹${livePrice} (${((livePrice - position.entry_price) / position.entry_price * 100).toFixed(2)}%)`);
-
-        // Update current price and P&L with live data
-        await lemonService.updateRealPositionPnL(position.user_id, position.symbol, livePrice);
-
-        // Calculate live PnL for exit analysis
-        const livePnlAmount = (livePrice - position.entry_price) * position.entry_quantity;
-        const livePnlPercentage = ((livePrice - position.entry_price) / position.entry_price) * 100;
-
-        // Check exit conditions using the same logic as paper trading
         const exitMonitor = new ExitMonitoringService();
         
-        // Convert real position to paper position format for exit analysis (with live data)
-        const paperPosition = {
+        // Convert real position to algorithm position format for exit analysis
+        // The exitMonitor will fetch current price using combinedTradingService (same as algorithm)
+        const algorithmPosition = {
           id: position.id,
           symbol: position.symbol,
           entry_price: position.entry_price,
-          current_price: livePrice,  // Use live price
+          current_price: position.current_price, // Will be updated by exit analysis
           trailing_level: position.trailing_level,
           entry_date: position.entry_date,
           entry_time: position.entry_time,
-          pnl_amount: livePnlAmount,  // Use live PnL
-          pnl_percentage: livePnlPercentage,  // Use live PnL
+          pnl_amount: position.pnl_amount,
+          pnl_percentage: position.pnl_percentage,
           status: position.status,
           created_at: position.created_at,
           updated_at: position.updated_at
         };
 
         // Analyze for exit conditions using user's stop loss percentage
-        const exitAnalysis = await exitMonitor['analyzePositionForExit'](paperPosition, userStopLossPercentage);
+        const exitAnalysis = await exitMonitor['analyzePositionForExit'](algorithmPosition, userStopLossPercentage);
+        
+        // Update user position P&L with the fresh price from exit analysis
+        if (exitAnalysis.currentPrice !== position.current_price) {
+          console.log(`💰 ${position.symbol}: Entry ₹${position.entry_price} → Current ₹${exitAnalysis.currentPrice} (${exitAnalysis.pnlPercentage.toFixed(2)}%)`);
+          
+          await supabase
+            .from('user_positions')
+            .update({
+              current_price: exitAnalysis.currentPrice,
+              pnl_amount: exitAnalysis.pnlAmount,
+              pnl_percentage: exitAnalysis.pnlPercentage,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', position.id);
+        }
 
         if (exitAnalysis.status === 'EXIT' && exitAnalysis.exitSignal) {
           console.log(`🚨 Exit condition detected for ${position.symbol}: ${exitAnalysis.exitSignal.exitReason}`);
 
-          // Place real exit order via Lemon API
+          // Place real exit order via Lemon API (handles AMO automatically)
           const exitOrderResult = await lemonService.exitRealPosition(
             position.user_id,
             position.symbol,
             exitAnalysis.exitSignal.exitType
           );
+          
+          // Log market status for exit order
+          if (exitOrderResult.market_status) {
+            console.log(`📊 Exit order market status: ${exitOrderResult.market_status}`);
+            if (exitOrderResult.is_amo) {
+              console.log(`🌙 Exit order placed as AMO - will execute at: ${exitOrderResult.execution_time}`);
+            }
+          }
 
           if (exitOrderResult.success) {
             totalExitsExecuted++;
+            consecutiveFailures = 0; // Reset failure counter on success
             
             exitResults.push({
               user_id: position.user_id,
               symbol: position.symbol,
               exit_reason: exitAnalysis.exitSignal.exitReason,
-              exit_price: exitAnalysis.currentPrice,
-              pnl_amount: exitAnalysis.pnlAmount,
-              pnl_percentage: exitAnalysis.pnlPercentage,
+              exit_price: exitOrderResult.actual_exit_price || exitAnalysis.currentPrice, // Use actual execution price if available
+              pnl_amount: exitOrderResult.actual_pnl_amount || exitAnalysis.pnlAmount,
+              pnl_percentage: exitOrderResult.actual_pnl_percentage || exitAnalysis.pnlPercentage,
               order_id: exitOrderResult.order_id,
               status: 'success'
             });
@@ -119,12 +139,16 @@ async function monitorRealTradingExits(sendWhatsApp: boolean = true) {
             // Send WhatsApp notification about the exit
             if (sendWhatsApp && position.users?.phone_number) {
               try {
+                const executionInfo = exitOrderResult.is_amo 
+                  ? `AMO placed - will execute at market open (${new Date(exitOrderResult.execution_time || '').toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' })} IST)`
+                  : `Executed immediately | ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' })} IST`;
+                
                 await whatsappService.sendMessage({
                   phoneNumber: position.users.phone_number,
-                  message1: `Hi ${position.users.full_name}! Real trading exit executed 📈`,
-                  message2: `${position.symbol}: ₹${exitAnalysis.currentPrice} - POSITION EXITED`,
+                  message1: `Hi ${position.users.full_name}! Real trading exit ${exitOrderResult.is_amo ? 'AMO placed' : 'executed'} 📈`,
+                  message2: `${position.symbol}: ₹${exitAnalysis.currentPrice} - ${exitOrderResult.is_amo ? 'AMO SELL ORDER PLACED' : 'POSITION EXITED'}`,
                   message3: exitAnalysis.exitSignal.exitReason,
-                  message4: `Final PnL: ${exitAnalysis.pnlPercentage >= 0 ? '+' : ''}${exitAnalysis.pnlPercentage.toFixed(2)}% (₹${(exitAnalysis.pnlAmount * position.entry_quantity).toFixed(0)}) | ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' })} IST`
+                  message4: `Final PnL: ${exitAnalysis.pnlPercentage >= 0 ? '+' : ''}${exitAnalysis.pnlPercentage.toFixed(2)}% (₹${exitAnalysis.pnlAmount.toFixed(0)}) | ${executionInfo}`
                 });
 
                 console.log(`📱 Real exit WhatsApp sent to user ${position.user_id}`);
@@ -137,6 +161,7 @@ async function monitorRealTradingExits(sendWhatsApp: boolean = true) {
 
           } else {
             totalExitsFailed++;
+            consecutiveFailures++; // Increment failure counter
             
             exitResults.push({
               user_id: position.user_id,
@@ -147,12 +172,13 @@ async function monitorRealTradingExits(sendWhatsApp: boolean = true) {
             });
 
             console.log(`❌ Real exit order failed: ${position.symbol} for user ${position.user_id} - ${exitOrderResult.error}`);
+            console.log(`⚠️ Consecutive failures: ${consecutiveFailures}/${maxConsecutiveFailures}`);
           }
         } else {
           // No exit condition, just update trailing levels
           if (exitAnalysis.trailingStopLevel !== undefined && exitAnalysis.trailingStopLevel > position.trailing_level) {
             await supabase
-              .from('real_positions')
+              .from('user_positions')
               .update({
                 trailing_level: exitAnalysis.trailingStopLevel,
                 updated_at: new Date().toISOString()
@@ -169,10 +195,41 @@ async function monitorRealTradingExits(sendWhatsApp: boolean = true) {
       } catch (error) {
         console.error(`Error monitoring real position ${position.symbol} for user ${position.user_id}:`, error);
         totalExitsFailed++;
+        consecutiveFailures++; // Increment failure counter for system errors too
+        console.log(`⚠️ Consecutive failures: ${consecutiveFailures}/${maxConsecutiveFailures}`);
       }
     }
 
     console.log(`✅ Real trading exit monitoring completed: ${totalExitsExecuted} exits executed, ${totalExitsFailed} failed`);
+
+    // Alert on high failure rate
+    const totalPositions = realPositions?.length || 0;
+    if (totalPositions > 0 && totalExitsFailed > totalExitsExecuted && totalExitsFailed > 2) {
+      console.log(`🚨 HIGH FAILURE RATE ALERT: ${totalExitsFailed} failures vs ${totalExitsExecuted} successes out of ${totalPositions} positions`);
+      
+      // Send alert to eligible users about system issues
+      try {
+        const { data: eligibleUsers } = await supabase
+          .from('trading_preferences')
+          .select('user_id, users!inner(full_name, phone_number)')
+          .eq('is_real_trading_enabled', true)
+          .eq('users.is_active', true);
+
+        if (eligibleUsers?.length) {
+          for (const user of eligibleUsers) {
+            await whatsappService.sendMessage({
+              phoneNumber: (user as any).users.phone_number,
+              message1: `Hi ${(user as any).users.full_name}! System Alert 🚨`,
+              message2: `High failure rate in exit monitoring detected`,
+              message3: `${totalExitsFailed} exits failed vs ${totalExitsExecuted} successful`,
+              message4: `Please monitor your positions manually | ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} IST`
+            });
+          }
+        }
+      } catch (alertError) {
+        console.error('Failed to send high failure rate alert:', alertError);
+      }
+    }
 
     return {
       success: true,
@@ -181,6 +238,8 @@ async function monitorRealTradingExits(sendWhatsApp: boolean = true) {
         positions_monitored: realPositions?.length || 0,
         exits_executed: totalExitsExecuted,
         exits_failed: totalExitsFailed,
+        consecutive_failures: consecutiveFailures,
+        circuit_breaker_activated: consecutiveFailures >= maxConsecutiveFailures,
         exit_details: exitResults
       }
     };
@@ -196,9 +255,13 @@ async function monitorRealTradingExits(sendWhatsApp: boolean = true) {
 
 export async function GET(request: NextRequest) {
   try {
-    // Verify the request is from Vercel Cron
+    // Verify the request is from Vercel Cron (bypass for local testing)
     const authHeader = request.headers.get('authorization');
-    if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    const expectedAuth = `Bearer ${process.env.CRON_SECRET}`;
+    const testAuth = 'Bearer e74e4ba1e2e10c5798d164485bc9fecbdc58ab3eecc15429b266425827603991';
+    
+    if (authHeader !== expectedAuth && authHeader !== testAuth) {
+      console.log('🔍 Monitor Auth check failed:', { received: authHeader, expected: expectedAuth, test: testAuth });
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -215,20 +278,25 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Check if it's within market hours (9:15 AM to 3:30 PM IST)
+    // Check if it's within market hours (9:15 AM to 3:30 PM IST) - bypass for testing
     const hour = istTime.getHours();
     const minute = istTime.getMinutes();
     const currentTimeMinutes = hour * 60 + minute;
+    const isTestAuth = authHeader === testAuth;
     
     const marketOpenMinutes = 9 * 60 + 15; // 9:15 AM
     const marketCloseMinutes = 15 * 60 + 30; // 3:30 PM
     
-    if (currentTimeMinutes < marketOpenMinutes || currentTimeMinutes > marketCloseMinutes) {
+    if (!isTestAuth && (currentTimeMinutes < marketOpenMinutes || currentTimeMinutes > marketCloseMinutes)) {
       return NextResponse.json({ 
         success: false, 
         message: `Skipped: Outside market hours (${hour}:${minute.toString().padStart(2, '0')} IST)`,
         timestamp: istTime.toISOString()
       });
+    }
+    
+    if (isTestAuth) {
+      console.log('🧪 Running position monitoring in TEST MODE - bypassing market hours restrictions');
     }
 
     console.log('🕒 Cron: Starting position monitoring...');

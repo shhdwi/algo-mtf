@@ -33,6 +33,15 @@ export interface OrderResponse {
   order_status?: string;
   error?: string;
   lemon_response?: any;
+  market_status?: 'OPEN' | 'CLOSED' | 'PRE_MARKET' | 'POST_MARKET' | 'WEEKEND';
+  is_amo?: boolean;
+  execution_time?: string;
+  actual_exit_price?: number;
+  actual_pnl_amount?: number;
+  actual_pnl_percentage?: number;
+  position_updated?: boolean;
+  order_placed?: boolean;
+  requires_manual_intervention?: boolean;
 }
 
 /**
@@ -199,42 +208,203 @@ class LemonTradingService {
   }
 
   /**
-   * Place a real order via Lemon API with retry mechanism
+   * Place a real order via Lemon API with enhanced retry mechanism
    */
   async placeOrder(userId: string, orderRequest: OrderRequest): Promise<OrderResponse> {
-    try {
-      // Try placing order with current token
-      let result = await this.attemptOrderPlacement(userId, orderRequest);
-      
-      // If authentication failed, refresh token and retry once
-      if (!result.success && 
-          (result.lemon_response?.error_code === 'AUTHENTICATION_ERROR' ||
-           result.error?.includes('Access token validation failed') ||
-           result.lemon_response?.msg?.includes('Access token validation failed'))) {
+    const maxRetries = 3;
+    let lastError = '';
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`🔄 Order attempt ${attempt}/${maxRetries} for ${orderRequest.symbol} (${orderRequest.transaction_type})`);
         
-        console.log(`🔄 Authentication failed for ${orderRequest.transaction_type} order, refreshing token and retrying...`);
+        // Try placing order with current token
+        let result = await this.attemptOrderPlacement(userId, orderRequest);
         
-        // Force refresh the access token
-        const newToken = await this.forceRefreshAccessToken(userId);
-        if (newToken) {
-          console.log(`✅ Token refreshed, retrying ${orderRequest.transaction_type} order for ${orderRequest.symbol}...`);
+        // If authentication failed, refresh token and retry
+        if (!result.success && 
+            (result.lemon_response?.error_code === 'AUTHENTICATION_ERROR' ||
+             result.error?.includes('Access token validation failed') ||
+             result.lemon_response?.msg?.includes('Access token validation failed'))) {
           
-          // Retry the order with fresh token
-          result = await this.attemptOrderPlacement(userId, orderRequest);
-        } else {
-          return { success: false, error: 'Failed to refresh access token for order placement' };
+          console.log(`🔄 Authentication failed for ${orderRequest.transaction_type} order (attempt ${attempt}), refreshing token...`);
+          
+          // Force refresh the access token
+          const newToken = await this.forceRefreshAccessToken(userId);
+          if (newToken) {
+            console.log(`✅ Token refreshed, retrying ${orderRequest.transaction_type} order for ${orderRequest.symbol}...`);
+            
+            // Wait a bit before retry to avoid race conditions
+            await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+            
+            // Retry the order with fresh token
+            result = await this.attemptOrderPlacement(userId, orderRequest);
+          } else {
+            lastError = 'Failed to refresh access token for order placement';
+            console.error(`❌ Token refresh failed on attempt ${attempt}`);
+            
+            // If this is not the last attempt, continue to next iteration
+            if (attempt < maxRetries) {
+              await new Promise(resolve => setTimeout(resolve, 2000 * attempt)); // Exponential backoff
+              continue;
+            }
+            
+            return { success: false, error: lastError };
+          }
+        }
+        
+        // If order succeeded or failed for non-auth reasons, return result
+        if (result.success || !this.isRetryableError(result)) {
+          return result;
+        }
+        
+        // Store error for potential final return
+        lastError = result.error || 'Unknown error';
+        
+        // If this is not the last attempt, wait and retry
+        if (attempt < maxRetries) {
+          const backoffTime = 1000 * Math.pow(2, attempt - 1); // Exponential backoff: 1s, 2s, 4s
+          console.log(`⏳ Retryable error on attempt ${attempt}, waiting ${backoffTime}ms before retry...`);
+          await new Promise(resolve => setTimeout(resolve, backoffTime));
+          continue;
+        }
+        
+        // Final attempt failed
+        return result;
+        
+      } catch (error) {
+        lastError = error instanceof Error ? error.message : 'Unknown error';
+        console.error(`❌ Order attempt ${attempt} failed:`, error);
+        
+        // If this is not the last attempt, wait and retry
+        if (attempt < maxRetries) {
+          const backoffTime = 1000 * Math.pow(2, attempt - 1);
+          await new Promise(resolve => setTimeout(resolve, backoffTime));
+          continue;
         }
       }
+    }
+    
+    // All attempts failed
+    console.error(`❌ All ${maxRetries} order attempts failed for ${orderRequest.symbol}`);
+    return {
+      success: false,
+      error: `All ${maxRetries} attempts failed. Last error: ${lastError}`
+    };
+  }
+
+  /**
+   * Check if market is currently open in IST
+   */
+  private isMarketOpen(): { 
+    isOpen: boolean; 
+    isAfterHours: boolean; 
+    currentTime: string; 
+    nextMarketOpen?: string;
+    marketStatus: 'OPEN' | 'CLOSED' | 'PRE_MARKET' | 'POST_MARKET' | 'WEEKEND';
+  } {
+    const now = new Date();
+    const istTime = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+    const dayOfWeek = istTime.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+    const hour = istTime.getHours();
+    const minute = istTime.getMinutes();
+    const currentTimeMinutes = hour * 60 + minute;
+    
+    const marketOpenMinutes = 9 * 60 + 15; // 9:15 AM
+    const marketCloseMinutes = 15 * 60 + 30; // 3:30 PM
+    const preMarketStart = 9 * 60; // 9:00 AM
+    
+    // Weekend check
+    if (dayOfWeek === 0 || dayOfWeek === 6) {
+      const nextMonday = new Date(istTime);
+      nextMonday.setDate(istTime.getDate() + (1 + (7 - dayOfWeek)) % 7);
+      nextMonday.setHours(9, 15, 0, 0);
       
-      return result;
-      
-    } catch (error) {
-      console.error('Error in placeOrder:', error);
       return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error'
+        isOpen: false,
+        isAfterHours: false,
+        currentTime: istTime.toISOString(),
+        nextMarketOpen: nextMonday.toISOString(),
+        marketStatus: 'WEEKEND'
       };
     }
+    
+    // Market hours check
+    const isOpen = currentTimeMinutes >= marketOpenMinutes && currentTimeMinutes <= marketCloseMinutes;
+    const isPreMarket = currentTimeMinutes >= preMarketStart && currentTimeMinutes < marketOpenMinutes;
+    const isAfterHours = currentTimeMinutes > marketCloseMinutes;
+    
+    let marketStatus: 'OPEN' | 'CLOSED' | 'PRE_MARKET' | 'POST_MARKET' | 'WEEKEND';
+    if (isOpen) {
+      marketStatus = 'OPEN';
+    } else if (isPreMarket) {
+      marketStatus = 'PRE_MARKET';
+    } else if (isAfterHours) {
+      marketStatus = 'POST_MARKET';
+    } else {
+      marketStatus = 'CLOSED';
+    }
+    
+    // Calculate next market open
+    let nextMarketOpen: string | undefined;
+    if (!isOpen) {
+      const nextOpen = new Date(istTime);
+      if (isAfterHours || currentTimeMinutes < preMarketStart) {
+        // If after hours or before pre-market, next open is tomorrow (or Monday if Friday)
+        if (dayOfWeek === 5) { // Friday
+          nextOpen.setDate(istTime.getDate() + 3); // Monday
+        } else {
+          nextOpen.setDate(istTime.getDate() + 1); // Tomorrow
+        }
+      }
+      nextOpen.setHours(9, 15, 0, 0);
+      nextMarketOpen = nextOpen.toISOString();
+    }
+    
+    return {
+      isOpen,
+      isAfterHours,
+      currentTime: istTime.toISOString(),
+      nextMarketOpen,
+      marketStatus
+    };
+  }
+
+  /**
+   * Check if an error is retryable
+   */
+  private isRetryableError(result: OrderResponse): boolean {
+    const retryableErrors = [
+      'AUTHENTICATION_ERROR',
+      'RATE_LIMIT_EXCEEDED', 
+      'INTERNAL_ERROR',
+      'NETWORK_ERROR',
+      'TIMEOUT_ERROR'
+    ];
+    
+    // SELL-specific non-retryable errors
+    const nonRetryableSellErrors = [
+      'INSUFFICIENT_FUNDS',
+      'INVALID_SYMBOL',
+      'QUANTITY_EXCEEDS_LIMIT',
+      'ORDER_NOT_CANCELLABLE',
+      'MARKET_CLOSED',
+      'VALIDATION_FAILED'
+    ];
+    
+    const errorCode = result.lemon_response?.error_code;
+    const errorMessage = result.error?.toLowerCase() || '';
+    
+    // Don't retry SELL-specific errors
+    if (nonRetryableSellErrors.includes(errorCode)) {
+      return false;
+    }
+    
+    return retryableErrors.includes(errorCode) || 
+           errorMessage.includes('timeout') ||
+           errorMessage.includes('network') ||
+           errorMessage.includes('connection') ||
+           errorMessage.includes('rate limit');
   }
 
   /**
@@ -261,8 +431,18 @@ class LemonTradingService {
       const publicKey = this.decrypt(credentials.public_key_encrypted);
       const clientId = credentials.client_id;
 
+      // Check market status for AMO handling
+      const marketStatus = this.isMarketOpen();
+      const isAMO = !marketStatus.isOpen; // After Market Order if market is closed
+      
+      console.log(`📊 Market Status: ${marketStatus.marketStatus} (${marketStatus.currentTime})`);
+      if (isAMO) {
+        console.log(`🌙 Market closed - placing After Market Order (AMO) for ${orderRequest.symbol}`);
+        console.log(`⏰ Next market open: ${marketStatus.nextMarketOpen}`);
+      }
+
       // Prepare order payload for Lemon API with MTF (Margin Trading Facility)
-      const orderPayload = {
+      const orderPayload: any = {
         clientId,
         transactionType: orderRequest.transaction_type,
         exchangeSegment: 'NSE',
@@ -271,8 +451,17 @@ class LemonTradingService {
         validity: 'DAY',
         symbol: orderRequest.symbol,
         quantity: orderRequest.quantity.toString(),
-        afterMarketOrder: false
+        tag: `${orderRequest.transaction_type}_${orderRequest.symbol}_${Date.now()}`, // Add tag for tracking
+        afterMarketOrder: isAMO // Set AMO flag based on market status
       };
+
+      // Only include price for LIMIT orders (as per Lemon API documentation)
+      if (orderPayload.orderType === 'LIMIT' && orderRequest.price) {
+        orderPayload.price = orderRequest.price.toString();
+      }
+      
+      // Note: For MARKET orders, price field is omitted as per API documentation
+      console.log(`📤 Order payload: ${JSON.stringify(orderPayload, null, 2)}`);
 
       // Place order via Lemon API
       const response = await fetch(`${this.LEMON_BASE_URL}/api-trading/api/v2/orders`, {
@@ -289,7 +478,7 @@ class LemonTradingService {
       const result = await response.json();
 
       if (result.status === 'success') {
-        // Save order to database
+        // Save order to database (enhanced with AMO information)
         const { error: orderError } = await this.supabase
           .from('real_orders')
           .insert({
@@ -297,11 +486,17 @@ class LemonTradingService {
             lemon_order_id: result.data.orderId,
             symbol: orderRequest.symbol,
             transaction_type: orderRequest.transaction_type,
+            order_type: 'MARKET',
             quantity: orderRequest.quantity,
-            price: orderRequest.price,
+            price: orderRequest.price || 0, // 0 for MARKET orders
             order_status: result.data.orderStatus,
             order_reason: orderRequest.order_reason,
-            scanner_signal_id: orderRequest.scanner_signal_id
+            scanner_signal_id: orderRequest.scanner_signal_id || null,
+            is_amo: isAMO,
+            market_status: marketStatus.marketStatus,
+            expected_execution_time: isAMO ? marketStatus.nextMarketOpen : null,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
           })
           .select('id')
           .single();
@@ -310,13 +505,19 @@ class LemonTradingService {
           console.error('Failed to save order to database:', orderError);
         }
 
-          console.log(`✅ MTF Order placed: ${orderRequest.symbol} ${orderRequest.transaction_type} ${orderRequest.quantity} shares - Order ID: ${result.data.orderId}`);
+        console.log(`✅ MTF Order placed: ${orderRequest.symbol} ${orderRequest.transaction_type} ${orderRequest.quantity} shares - Order ID: ${result.data.orderId}`);
+        if (isAMO) {
+          console.log(`🌙 AMO order will execute at: ${marketStatus.nextMarketOpen}`);
+        }
 
         return {
           success: true,
           order_id: result.data.orderId,
           order_status: result.data.orderStatus,
-          lemon_response: result
+          lemon_response: result,
+          market_status: marketStatus.marketStatus,
+          is_amo: isAMO,
+          execution_time: isAMO ? marketStatus.nextMarketOpen : 'Immediate'
         };
 
       } else {
@@ -324,7 +525,9 @@ class LemonTradingService {
         return {
           success: false,
           error: result.message || 'Order placement failed',
-          lemon_response: result
+          lemon_response: result,
+          market_status: marketStatus.marketStatus,
+          is_amo: isAMO
         };
       }
 
@@ -743,7 +946,7 @@ class LemonTradingService {
     try {
       // Get active position
       const { data: position, error: fetchError } = await this.supabase
-        .from('real_positions')
+        .from('user_positions')
         .select('entry_price, entry_quantity')
         .eq('user_id', userId)
         .eq('symbol', symbol)
@@ -760,7 +963,7 @@ class LemonTradingService {
 
       // Update position P&L
       const { error } = await this.supabase
-        .from('real_positions')
+        .from('user_positions')
         .update({
           current_price: currentPrice,
           pnl_amount: pnlAmount,
@@ -787,7 +990,7 @@ class LemonTradingService {
     try {
       // Get active position
       const { data: position, error: positionError } = await this.supabase
-        .from('real_positions')
+        .from('user_positions')
         .select('*')
         .eq('user_id', userId)
         .eq('symbol', symbol)
@@ -798,93 +1001,157 @@ class LemonTradingService {
         return { success: false, error: 'Active position not found' };
       }
 
+      // Validate position can be sold
+      if (!position.entry_quantity || position.entry_quantity <= 0) {
+        return { success: false, error: 'Invalid position quantity for exit' };
+      }
+
+      if (position.status !== 'ACTIVE') {
+        return { success: false, error: `Cannot exit position with status: ${position.status}` };
+      }
+
+      // Additional SELL order validations
+      if (position.entry_quantity > 10000) { // Sanity check for large quantities
+        console.log(`⚠️ Large SELL quantity detected: ${position.entry_quantity} shares for ${symbol}`);
+      }
+
+      // Validate we have a valid entry price for PnL calculation
+      if (!position.entry_price || position.entry_price <= 0) {
+        return { success: false, error: 'Invalid entry price for PnL calculation' };
+      }
+
       console.log(`🔄 Attempting to exit position: ${symbol} for user ${userId}`);
+      console.log(`📊 Position details: ${position.entry_quantity} shares @ ₹${position.entry_price} (Current: ₹${position.current_price})`);
 
       // Place sell order (placeOrder now handles token refresh automatically)
       const sellOrderResult = await this.placeOrder(userId, {
         symbol,
         transaction_type: 'SELL',
         quantity: position.entry_quantity,
+        price: position.current_price, // Include current price for reference
         order_reason: exitReason
       });
 
       if (sellOrderResult.success) {
-        // First create the SELL order record (handle duplicate order IDs)
-        let sellOrderRecord;
-        const { data: existingOrder } = await this.supabase
-          .from('real_orders')
-          .select('*')
-          .eq('lemon_order_id', sellOrderResult.order_id)
-          .single();
-
-        if (existingOrder) {
-          // Order ID already exists, use the existing record
-          console.log(`⚠️ Order ID ${sellOrderResult.order_id} already exists, using existing record`);
-          sellOrderRecord = existingOrder;
-        } else {
-          // Create new order record
-          const { data: newOrderRecord, error: sellOrderError } = await this.supabase
+        console.log(`✅ SELL order placed successfully: ${symbol} (Order ID: ${sellOrderResult.order_id})`);
+        
+        try {
+          // Start atomic transaction-like operations
+          console.log(`📝 Recording SELL order and updating position atomically...`);
+          
+          // First create the SELL order record (handle duplicate order IDs)
+          let sellOrderRecord;
+          const { data: existingOrder } = await this.supabase
             .from('real_orders')
-            .insert({
-              user_id: userId,
-              lemon_order_id: sellOrderResult.order_id,
-              symbol,
-              transaction_type: 'SELL',
-              order_type: 'MARKET',
-              quantity: position.entry_quantity,
-              order_status: sellOrderResult.order_status || 'PLACED',
-              order_reason: exitReason,
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString()
-            })
-            .select()
+            .select('*')
+            .eq('lemon_order_id', sellOrderResult.order_id)
             .single();
 
-          if (sellOrderError) {
-            console.error('Failed to create SELL order record:', sellOrderError);
-            return { success: false, error: `Failed to create SELL order record: ${sellOrderError.message}` };
+          if (existingOrder) {
+            // Order ID already exists, use the existing record
+            console.log(`⚠️ Order ID ${sellOrderResult.order_id} already exists, using existing record`);
+            sellOrderRecord = existingOrder;
+          } else {
+            // Create new order record with current price for reference
+            const { data: newOrderRecord, error: sellOrderError } = await this.supabase
+              .from('real_orders')
+              .insert({
+                user_id: userId,
+                lemon_order_id: sellOrderResult.order_id,
+                symbol,
+                transaction_type: 'SELL',
+                order_type: 'MARKET',
+                quantity: position.entry_quantity,
+                price: position.current_price, // Record the price at time of order
+                order_status: sellOrderResult.order_status || 'PLACED',
+                order_reason: exitReason,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+              })
+              .select()
+              .single();
+
+            if (sellOrderError) {
+              console.error('Failed to create SELL order record:', sellOrderError);
+              // ❌ CRITICAL: Order placed but record creation failed
+              console.error(`🚨 CRITICAL: SELL order ${sellOrderResult.order_id} placed but database record failed!`);
+              console.error(`🚨 TODO: Implement order cancellation for orphaned orders`);
+              
+              // TODO: Add order cancellation logic here
+              // await this.cancelOrder(userId, sellOrderResult.order_id);
+              
+              return { 
+                success: false, 
+                error: `Failed to create SELL order record: ${sellOrderError.message}`,
+                order_placed: true,
+                order_id: sellOrderResult.order_id,
+                requires_manual_intervention: true
+              };
+            }
+            
+            sellOrderRecord = newOrderRecord;
           }
+
+          // Use current price from position (should match order execution)
+          const exitPrice = position.current_price;
           
-          sellOrderRecord = newOrderRecord;
+          // Calculate final PnL based on current database price
+          // Note: This may differ from actual execution price due to market movement
+          const finalPnlAmount = (exitPrice - position.entry_price) * position.entry_quantity;
+          const finalPnlPercentage = ((exitPrice - position.entry_price) / position.entry_price) * 100;
+
+          console.log(`💰 Calculated PnL for ${symbol}: ₹${finalPnlAmount.toFixed(2)} (${finalPnlPercentage.toFixed(2)}%)`);
+          console.log(`⚠️ Note: Actual execution price may differ from calculated price due to market movement`);
+
+          // Update position status to EXITED using the order UUID
+          const { error: updateError } = await this.supabase
+            .from('user_positions')
+            .update({
+              exit_order_id: sellOrderRecord.id, // Use the UUID from real_orders
+              exit_price: exitPrice, // Record estimated exit price (not actual execution price)
+              exit_quantity: position.entry_quantity, // Record exit quantity
+              pnl_amount: finalPnlAmount, // Estimated PnL amount
+              pnl_percentage: finalPnlPercentage, // Estimated PnL percentage
+              current_price: exitPrice, // Update current price to exit price
+              status: 'EXITED',
+              exit_date: new Date().toISOString().split('T')[0],
+              exit_time: new Date().toISOString(),
+              exit_reason: exitReason,
+              trailing_level: 0, // Reset trailing level
+              updated_at: new Date().toISOString()
+            })
+            .eq('user_id', userId)
+            .eq('symbol', symbol)
+            .eq('status', 'ACTIVE');
+
+          if (updateError) {
+            console.error('Failed to update position to EXITED:', updateError);
+            console.error(`🚨 CRITICAL: SELL order ${sellOrderResult.order_id} placed but position update failed!`);
+            // ❌ CRITICAL: Order placed but position still shows ACTIVE
+            return { success: false, error: `Failed to update position status: ${updateError.message}` };
+          }
+
+          console.log(`✅ Real position exited: ${symbol} for user ${userId} - Reason: ${exitReason}`);
+          
+          // Return success with actual order details
+          return {
+            ...sellOrderResult,
+            actual_exit_price: exitPrice,
+            actual_pnl_amount: finalPnlAmount,
+            actual_pnl_percentage: finalPnlPercentage,
+            position_updated: true
+          };
+          
+        } catch (transactionError) {
+          console.error(`🚨 CRITICAL: Error in post-order processing for ${symbol}:`, transactionError);
+          console.error(`🚨 SELL order ${sellOrderResult.order_id} may be placed but database operations failed!`);
+          return { 
+            success: false, 
+            error: `Post-order processing failed: ${transactionError instanceof Error ? transactionError.message : 'Unknown error'}`,
+            order_placed: true,
+            order_id: sellOrderResult.order_id
+          };
         }
-
-        // Get current live price for accurate exit recording
-        const ltpData = await this.getLTP(symbol, 'NSE');
-        const exitPrice = ltpData?.last_traded_price || position.current_price;
-        
-        // Calculate final PnL
-        const finalPnlAmount = (exitPrice - position.entry_price) * position.entry_quantity;
-        const finalPnlPercentage = ((exitPrice - position.entry_price) / position.entry_price) * 100;
-
-        console.log(`💰 Final PnL for ${symbol}: ₹${finalPnlAmount.toFixed(2)} (${finalPnlPercentage.toFixed(2)}%)`);
-
-        // Update position status to EXITED using the order UUID
-        const { error: updateError } = await this.supabase
-          .from('real_positions')
-          .update({
-            exit_order_id: sellOrderRecord.id, // Use the UUID from real_orders
-            exit_price: exitPrice, // Record actual exit price
-            exit_quantity: position.entry_quantity, // Record exit quantity
-            pnl_amount: finalPnlAmount, // Final PnL amount
-            pnl_percentage: finalPnlPercentage, // Final PnL percentage
-            current_price: exitPrice, // Update current price to exit price
-            status: 'EXITED',
-            exit_date: new Date().toISOString().split('T')[0],
-            exit_time: new Date().toISOString(),
-            exit_reason: exitReason,
-            trailing_level: 0, // Reset trailing level
-            updated_at: new Date().toISOString()
-          })
-          .eq('user_id', userId)
-          .eq('symbol', symbol)
-          .eq('status', 'ACTIVE');
-
-        if (updateError) {
-          console.error('Failed to update position to EXITED:', updateError);
-          return { success: false, error: `Failed to update position status: ${updateError.message}` };
-        }
-
-        console.log(`✅ Real position exited: ${symbol} for user ${userId} - Reason: ${exitReason}`);
       }
 
       return sellOrderResult;

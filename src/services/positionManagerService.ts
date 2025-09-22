@@ -46,12 +46,12 @@ class PositionManagerService {
   }
   
   /**
-   * Get all active positions
+   * Get all active algorithm positions (source of truth)
    */
   async getActivePositions(): Promise<Position[]> {
     try {
       const { data, error } = await this.supabase
-        .from('positions')
+        .from('algorithm_positions')
         .select('*')
         .eq('status', 'ACTIVE')
         .order('entry_date', { ascending: false });
@@ -59,7 +59,7 @@ class PositionManagerService {
       if (error) throw new Error(error.message);
       return data || [];
     } catch (error) {
-      console.error('Error getting active positions:', error);
+      console.error('Error getting active algorithm positions:', error);
       return [];
     }
   }
@@ -70,7 +70,7 @@ class PositionManagerService {
   async hasActivePosition(symbol: string): Promise<boolean> {
     try {
       const { count, error } = await this.supabase
-        .from('positions')
+        .from('algorithm_positions')
         .select('*', { count: 'exact', head: true })
         .eq('symbol', symbol)
         .eq('status', 'ACTIVE');
@@ -84,7 +84,7 @@ class PositionManagerService {
   }
 
   /**
-   * Add new position to database
+   * Add new algorithm position to database (source of truth)
    */
   async addNewPosition(entrySignal: UltimateScanResult): Promise<string | null> {
     try {
@@ -92,7 +92,7 @@ class PositionManagerService {
       const istTime = new Date(now.toLocaleString("en-US", {timeZone: "Asia/Kolkata"}));
       
       const { data, error } = await this.supabase
-        .from('positions')
+        .from('algorithm_positions')
         .insert({
           symbol: entrySignal.symbol,
           entry_date: istTime.toISOString().split('T')[0],
@@ -101,7 +101,9 @@ class PositionManagerService {
           current_price: entrySignal.current_price,
           pnl_amount: 0,
           pnl_percentage: 0,
-          status: 'ACTIVE'
+          status: 'ACTIVE',
+          trailing_level: 0,
+          scanner_signal_id: `ALGO_${entrySignal.symbol}_${Date.now()}`
         })
         .select('id')
         .single();
@@ -110,14 +112,14 @@ class PositionManagerService {
       
       const positionId = data?.id;
       
-      // Add entry conditions
+      // Add entry conditions (still using old table for now)
       if (positionId && entrySignal.conditions && entrySignal.indicators) {
         await this.addEntryConditions(positionId, entrySignal);
       }
       
       return positionId;
     } catch (error) {
-      console.error(`Error adding position for ${entrySignal.symbol}:`, error);
+      console.error(`Error adding algorithm position for ${entrySignal.symbol}:`, error);
       return null;
     }
   }
@@ -159,7 +161,7 @@ class PositionManagerService {
     try {
       // First get the entry price
       const { data: position, error: fetchError } = await this.supabase
-        .from('positions')
+        .from('algorithm_positions')
         .select('entry_price')
         .eq('symbol', symbol)
         .eq('status', 'ACTIVE')
@@ -175,7 +177,7 @@ class PositionManagerService {
       const pnlPercentage = (pnlAmount / entryPrice) * 100;
 
       const { error } = await this.supabase
-        .from('positions')
+        .from('algorithm_positions')
         .update({
           current_price: currentPrice,
           pnl_amount: pnlAmount,

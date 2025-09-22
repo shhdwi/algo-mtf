@@ -69,14 +69,7 @@ class ExitMonitoringService {
   private positionManager: PositionManagerService;
   private whatsappService: WhatsAppService;
 
-  // Phone numbers for exit notifications
-  private readonly NOTIFICATION_RECIPIENTS = [
-    { name: "Shrish", phone: "+917977814522" },
-    { name: "Gaurav", phone: "+919016333873" },
-    { name: "Brajesh", phone: "+917799817700" },
-    { name: "Devam", phone: "+917045597655" },
-    { name: "Aditya", phone: "+919359845062" }
-  ];
+  // Note: WhatsApp notifications now sent to eligible users from database
 
   constructor() {
     this.combinedTradingService = new CombinedTradingService();
@@ -370,7 +363,7 @@ class ExitMonitoringService {
       const istTime = new Date(new Date().toLocaleString("en-US", {timeZone: "Asia/Kolkata"}));
       
       const { error } = await this.positionManager['supabase']
-        .from('positions')
+        .from('algorithm_positions')
         .update({
           status: 'EXITED',
           exit_date: istTime.toISOString().split('T')[0],
@@ -394,36 +387,55 @@ class ExitMonitoringService {
   }
 
   /**
-   * Send WhatsApp exit notifications
+   * Send WhatsApp exit notifications to eligible users
    */
   private async sendExitNotifications(exitSignals: ExitSignal[]): Promise<void> {
-    for (const exitSignal of exitSignals) {
-      // Send to each recipient
-      for (const recipient of this.NOTIFICATION_RECIPIENTS) {
-        try {
-          console.log(`📱 Sending ${exitSignal.position.symbol} exit signal to ${recipient.name}...`);
-          
-          const result = await this.whatsappService.sendMessage({
-            phoneNumber: recipient.phone,
-            message1: `Hi ${recipient.name}! Book profits now! 📈`,
-            message2: `${exitSignal.position.symbol}: ₹${exitSignal.currentPrice} - TRAILING STOP HIT`,
-            message3: `${exitSignal.exitReason}`,
-            message4: `Final PnL: ${exitSignal.pnlPercentage >= 0 ? '+' : ''}${exitSignal.pnlPercentage.toFixed(2)}% (₹${exitSignal.pnlAmount.toFixed(2)}) | ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' })} IST`
-          });
+    try {
+      // Get eligible users from database
+      const { data: eligibleUsers, error } = await this.positionManager['supabase']
+        .from('trading_preferences')
+        .select(`
+          user_id,
+          users!inner(full_name, phone_number, is_active)
+        `)
+        .eq('is_real_trading_enabled', true)
+        .eq('users.is_active', true);
 
-          if (result.success) {
-            console.log(`✅ Exit WhatsApp sent to ${recipient.name}`);
-          } else {
-            console.log(`❌ Exit WhatsApp failed to ${recipient.name}: ${result.error}`);
+      if (error || !eligibleUsers?.length) {
+        console.log('📱 No eligible users found for exit notifications');
+        return;
+      }
+
+      for (const exitSignal of exitSignals) {
+        // Send to each eligible user
+        for (const user of eligibleUsers) {
+          try {
+            console.log(`📱 Sending ${exitSignal.position.symbol} exit signal to ${(user as any).users.full_name}...`);
+            
+            const result = await this.whatsappService.sendMessage({
+              phoneNumber: (user as any).users.phone_number,
+              message1: `Hi ${(user as any).users.full_name}! Book profits now! 📈`,
+              message2: `${exitSignal.position.symbol}: ₹${exitSignal.currentPrice} - TRAILING STOP HIT`,
+              message3: `${exitSignal.exitReason}`,
+              message4: `Final PnL: ${exitSignal.pnlPercentage >= 0 ? '+' : ''}${exitSignal.pnlPercentage.toFixed(2)}% (₹${exitSignal.pnlAmount.toFixed(2)}) | ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' })} IST`
+            });
+
+            if (result.success) {
+              console.log(`✅ Exit WhatsApp sent to ${(user as any).users.full_name}`);
+            } else {
+              console.log(`❌ Exit WhatsApp failed to ${(user as any).users.full_name}: ${result.error}`);
+            }
+            
+            // Delay between messages
+            await this.delay(1500);
+            
+          } catch (error) {
+            console.log(`❌ Exit WhatsApp error for ${(user as any).users.full_name}: ${error instanceof Error ? error.message : 'Unknown error'}`);
           }
-          
-          // Delay between messages
-          await this.delay(1500);
-          
-        } catch (error) {
-          console.log(`❌ Exit WhatsApp error for ${recipient.name}: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
       }
+    } catch (error) {
+      console.error('❌ Error sending exit notifications:', error);
     }
   }
 
@@ -431,36 +443,55 @@ class ExitMonitoringService {
    * Send WhatsApp trailing level notifications
    */
   private async sendTrailingLevelNotifications(notifications: TrailingLevelNotification[]): Promise<void> {
-    for (const notification of notifications) {
-      // Send to each recipient
-      for (const recipient of this.NOTIFICATION_RECIPIENTS) {
-        try {
-          console.log(`📱 Sending ${notification.symbol} trailing level notification to ${recipient.name}...`);
-          
-          // Calculate locked profit amount based on 1 lakh investment
-          const lockedProfitAmount = (notification.lockInPrice - notification.position.entry_price) / notification.position.entry_price * 100000;
-          
-          const result = await this.whatsappService.sendMessage({
-            phoneNumber: recipient.phone,
-            message1: `Hi ${recipient.name}! Trailing level activated 🎯`,
-            message2: `${notification.symbol}: ₹${notification.currentPrice} - LEVEL ${notification.newLevel} ACTIVATED`,
-            message3: `${notification.levelDescription} | ₹${lockedProfitAmount.toFixed(0)} profit now LOCKED (${((notification.lockInPrice - notification.position.entry_price) / notification.position.entry_price * 100).toFixed(2)}%)`,
-            message4: `Current PnL: +${notification.pnlPercentage.toFixed(2)}% (₹${notification.pnlAmount.toFixed(0)}) | Protected at ₹${notification.lockInPrice.toFixed(2)} | ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' })} IST`
-          });
+    try {
+      // Get eligible users from database
+      const { data: eligibleUsers, error } = await this.positionManager['supabase']
+        .from('trading_preferences')
+        .select(`
+          user_id,
+          users!inner(full_name, phone_number, is_active)
+        `)
+        .eq('is_real_trading_enabled', true)
+        .eq('users.is_active', true);
 
-          if (result.success) {
-            console.log(`✅ Trailing level WhatsApp sent to ${recipient.name}`);
-          } else {
-            console.log(`❌ Trailing level WhatsApp failed to ${recipient.name}: ${result.error}`);
+      if (error || !eligibleUsers?.length) {
+        console.log('📱 No eligible users found for trailing level notifications');
+        return;
+      }
+
+      for (const notification of notifications) {
+        // Send to each eligible user
+        for (const user of eligibleUsers) {
+          try {
+            console.log(`📱 Sending ${notification.symbol} trailing level notification to ${(user as any).users.full_name}...`);
+            
+            // Calculate locked profit amount based on 1 lakh investment
+            const lockedProfitAmount = (notification.lockInPrice - notification.position.entry_price) / notification.position.entry_price * 100000;
+            
+            const result = await this.whatsappService.sendMessage({
+              phoneNumber: (user as any).users.phone_number,
+              message1: `Hi ${(user as any).users.full_name}! Trailing level activated 🎯`,
+              message2: `${notification.symbol}: ₹${notification.currentPrice} - LEVEL ${notification.newLevel} ACTIVATED`,
+              message3: `${notification.levelDescription} | ₹${lockedProfitAmount.toFixed(0)} profit now LOCKED (${((notification.lockInPrice - notification.position.entry_price) / notification.position.entry_price * 100).toFixed(2)}%)`,
+              message4: `Current PnL: +${notification.pnlPercentage.toFixed(2)}% (₹${notification.pnlAmount.toFixed(0)}) | Protected at ₹${notification.lockInPrice.toFixed(2)} | ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' })} IST`
+            });
+
+            if (result.success) {
+              console.log(`✅ Trailing level WhatsApp sent to ${(user as any).users.full_name}`);
+            } else {
+              console.log(`❌ Trailing level WhatsApp failed to ${(user as any).users.full_name}: ${result.error}`);
+            }
+            
+            // Delay between messages
+            await this.delay(1500);
+            
+          } catch (error) {
+            console.log(`❌ Trailing level WhatsApp error for ${(user as any).users.full_name}: ${error instanceof Error ? error.message : 'Unknown error'}`);
           }
-          
-          // Delay between messages
-          await this.delay(1500);
-          
-        } catch (error) {
-          console.log(`❌ Trailing level WhatsApp error for ${recipient.name}: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
       }
+    } catch (error) {
+      console.error('❌ Error sending trailing level notifications:', error);
     }
   }
 

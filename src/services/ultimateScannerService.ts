@@ -48,13 +48,7 @@ class UltimateScannerService {
   private lastTokenRefresh = 0;
 
   // Phone numbers for entry signal notifications
-  private readonly NOTIFICATION_RECIPIENTS = [
-    { name: "Shrish", phone: "+917977814522" },
-    { name: "Gaurav", phone: "+919016333873" },
-    { name: "Brajesh", phone: "+917799817700" },
-    { name: "Devam", phone: "+917045597655" },
-    { name: "Aditya", phone: "+919359845062" }
-  ];
+  // Note: WhatsApp notifications now sent to eligible users from database
 
   constructor() {
     this.combinedTradingService = new CombinedTradingService();
@@ -674,37 +668,56 @@ class UltimateScannerService {
 
 
   /**
-   * Send WhatsApp notifications for entry signals
+   * Send WhatsApp notifications for entry signals to eligible users
    */
   private async sendEntryNotifications(entries: UltimateScanResult[]): Promise<void> {
-    for (const entry of entries) {
-      // Send to each recipient with personalized greeting
-      for (const recipient of this.NOTIFICATION_RECIPIENTS) {
-        try {
-          this.log(`📱 Sending ${entry.symbol} entry signal to ${recipient.name}...`);
-          
-          const histogramCount = this.getHistogramCount(entry);
-          const result = await this.whatsappService.sendMessage({
-            phoneNumber: recipient.phone,
-            message1: `Hi ${recipient.name}! High momentum detected by Dash 🚀`,
-            message2: `${entry.symbol}: ₹${entry.current_price} - ENTRY SIGNAL`,
-            message3: `✅ EMA50: ₹${entry.indicators?.ema50} | RSI: ${entry.indicators?.rsi14}`,
-            message4: `✅ Histogram: ${entry.indicators?.histogram} (${histogramCount} days) | ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' })} IST`
-          });
+    try {
+      // Get eligible users from database
+      const { data: eligibleUsers, error } = await this.positionManager['supabase']
+        .from('trading_preferences')
+        .select(`
+          user_id,
+          users!inner(full_name, phone_number, is_active)
+        `)
+        .eq('is_real_trading_enabled', true)
+        .eq('users.is_active', true);
 
-          if (result.success) {
-            this.log(`✅ WhatsApp sent to ${recipient.name} (${recipient.phone})`);
-          } else {
-            this.log(`❌ WhatsApp failed to ${recipient.name}: ${result.error}`);
+      if (error || !eligibleUsers?.length) {
+        this.log('📱 No eligible users found for entry notifications');
+        return;
+      }
+
+      for (const entry of entries) {
+        // Send to each eligible user with personalized greeting
+        for (const user of eligibleUsers) {
+          try {
+            this.log(`📱 Sending ${entry.symbol} entry signal to ${(user as any).users.full_name}...`);
+            
+            const histogramCount = this.getHistogramCount(entry);
+            const result = await this.whatsappService.sendMessage({
+              phoneNumber: (user as any).users.phone_number,
+              message1: `Hi ${(user as any).users.full_name}! High momentum detected by Dash 🚀`,
+              message2: `${entry.symbol}: ₹${entry.current_price} - ENTRY SIGNAL`,
+              message3: `✅ EMA50: ₹${entry.indicators?.ema50} | RSI: ${entry.indicators?.rsi14}`,
+              message4: `✅ Histogram: ${entry.indicators?.histogram} (${histogramCount} days) | ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' })} IST`
+            });
+
+            if (result.success) {
+              this.log(`✅ WhatsApp sent to ${(user as any).users.full_name} (${(user as any).users.phone_number})`);
+            } else {
+              this.log(`❌ WhatsApp failed to ${(user as any).users.full_name}: ${result.error}`);
+            }
+            
+            // Small delay between messages
+            await this.delay(1500);
+            
+          } catch (error) {
+            this.log(`❌ WhatsApp error for ${(user as any).users.full_name}: ${error instanceof Error ? error.message : 'Unknown error'}`);
           }
-          
-          // Small delay between messages
-          await this.delay(1500);
-          
-        } catch (error) {
-          this.log(`❌ WhatsApp error for ${recipient.name}: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
       }
+    } catch (error) {
+      this.log(`❌ Error sending entry notifications: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
