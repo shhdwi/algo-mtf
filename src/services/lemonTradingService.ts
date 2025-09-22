@@ -199,9 +199,48 @@ class LemonTradingService {
   }
 
   /**
-   * Place a real order via Lemon API
+   * Place a real order via Lemon API with retry mechanism
    */
   async placeOrder(userId: string, orderRequest: OrderRequest): Promise<OrderResponse> {
+    try {
+      // Try placing order with current token
+      let result = await this.attemptOrderPlacement(userId, orderRequest);
+      
+      // If authentication failed, refresh token and retry once
+      if (!result.success && 
+          (result.lemon_response?.error_code === 'AUTHENTICATION_ERROR' ||
+           result.error?.includes('Access token validation failed') ||
+           result.lemon_response?.msg?.includes('Access token validation failed'))) {
+        
+        console.log(`🔄 Authentication failed for ${orderRequest.transaction_type} order, refreshing token and retrying...`);
+        
+        // Force refresh the access token
+        const newToken = await this.forceRefreshAccessToken(userId);
+        if (newToken) {
+          console.log(`✅ Token refreshed, retrying ${orderRequest.transaction_type} order for ${orderRequest.symbol}...`);
+          
+          // Retry the order with fresh token
+          result = await this.attemptOrderPlacement(userId, orderRequest);
+        } else {
+          return { success: false, error: 'Failed to refresh access token for order placement' };
+        }
+      }
+      
+      return result;
+      
+    } catch (error) {
+      console.error('Error in placeOrder:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
+    }
+  }
+
+  /**
+   * Attempt order placement (internal method)
+   */
+  private async attemptOrderPlacement(userId: string, orderRequest: OrderRequest): Promise<OrderResponse> {
     try {
       // Get user's access token and credentials
       const accessToken = await this.getAccessToken(userId);
@@ -754,36 +793,13 @@ class LemonTradingService {
 
       console.log(`🔄 Attempting to exit position: ${symbol} for user ${userId}`);
 
-      // Try placing sell order with retry mechanism for authentication failures
-      let sellOrderResult = await this.placeOrder(userId, {
+      // Place sell order (placeOrder now handles token refresh automatically)
+      const sellOrderResult = await this.placeOrder(userId, {
         symbol,
         transaction_type: 'SELL',
         quantity: position.entry_quantity,
         order_reason: exitReason
       });
-
-      // If authentication failed, refresh token and retry once
-      if (!sellOrderResult.success && 
-          sellOrderResult.lemon_response?.error_code === 'AUTHENTICATION_ERROR') {
-        
-        console.log(`🔄 Authentication failed for SELL order, refreshing token and retrying...`);
-        
-        // Force refresh the access token
-        const newToken = await this.forceRefreshAccessToken(userId);
-        if (newToken) {
-          console.log(`✅ Token refreshed, retrying SELL order for ${symbol}...`);
-          
-          // Retry the sell order with fresh token
-          sellOrderResult = await this.placeOrder(userId, {
-            symbol,
-            transaction_type: 'SELL',
-            quantity: position.entry_quantity,
-            order_reason: exitReason
-          });
-        } else {
-          return { success: false, error: 'Failed to refresh access token for SELL order' };
-        }
-      }
 
       if (sellOrderResult.success) {
         // First create the SELL order record (handle duplicate order IDs)
