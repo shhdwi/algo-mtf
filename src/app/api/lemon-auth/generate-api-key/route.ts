@@ -4,22 +4,23 @@ const LEMON_BASE_URL = 'https://cs-prod.lemonn.co.in';
 
 export async function POST(request: NextRequest) {
   try {
-    const { client_id, ip_whitelist = ['0.0.0.0/0'] } = await request.json();
+    const { client_id, access_token, ip_whitelist = ['0.0.0.0/0'] } = await request.json();
 
-    if (!client_id) {
+    if (!client_id || !access_token) {
       return NextResponse.json({
         success: false,
-        error: 'Client ID is required'
+        error: 'Client ID and access token are required'
       }, { status: 400 });
     }
 
     console.log(`🔑 Generating API keys for client: ${client_id}...`);
 
-    // Generate API keys with Lemon API (according to documentation)
+    // Generate API keys with Lemon API (with proper authentication)
     const response = await fetch(`${LEMON_BASE_URL}/api-trading/api/v1/generate_api_key`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${access_token}` // Add authentication
       },
       body: JSON.stringify({
         client_id: client_id,
@@ -66,7 +67,7 @@ export async function GET() {
   return NextResponse.json({
     message: 'Lemon API Key Generation',
     description: 'Generate API keys after successful PIN validation',
-    usage: 'POST with { "auth_token": "token", "phone_number": "+91XXXXXXXXXX" }',
+    usage: 'POST with { "client_id": "CLIENT_XXX", "access_token": "token", "ip_whitelist": ["0.0.0.0/0"] }',
     features: [
       'Automatic API key generation',
       'IP whitelist set to allow all (0.0.0.0/0)',
@@ -74,8 +75,9 @@ export async function GET() {
       'Ready for immediate trading use'
     ],
     example: {
-      auth_token: 'auth_token_from_pin_validation',
-      phone_number: '+911234567890'
+      client_id: 'CLIENT_1234567890_1234',
+      access_token: 'access_token_from_pin_validation',
+      ip_whitelist: ['0.0.0.0/0']
     }
   });
 }

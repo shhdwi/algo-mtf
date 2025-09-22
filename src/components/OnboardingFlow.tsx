@@ -288,6 +288,7 @@ export default function OnboardingFlow() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           client_id: clientId,
+          access_token: pinResult.access_token, // Pass the access token from PIN validation
           ip_whitelist: ['0.0.0.0/0'] // Allow all IPs
         })
       });
