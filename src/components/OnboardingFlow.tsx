@@ -323,61 +323,77 @@ export default function OnboardingFlow() {
     
     try {
       if (currentStep === 1) {
-        // Register user
+        // Just validate form data and move to next step (don't create user yet)
         if (formData.password !== formData.confirmPassword) {
           alert('Passwords do not match');
           setLoading(false);
           return;
         }
 
-        const response = await fetch('/api/auth/register', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            email: formData.email,
-            password: formData.password,
-            full_name: formData.full_name,
-            phone_number: formData.phone_number
-          })
-        });
-
-        const result = await response.json();
-        if (result.success) {
-          // Auto-login after registration
-          const loginResponse = await fetch('/api/auth/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              email: formData.email,
-              password: formData.password
-            })
-          });
-
-          const loginResult = await loginResponse.json();
-          if (loginResult.success) {
-            localStorage.setItem('userToken', loginResult.token);
-            setUserToken(loginResult.token);
-            setCurrentStep(2);
-          } else {
-            alert('Registration successful, but login failed. Please try logging in manually.');
-          }
-        } else {
-          alert(result.error);
+        if (!formData.full_name || !formData.email || !formData.phone_number || !formData.password) {
+          alert('Please fill in all required fields');
+          setLoading(false);
+          return;
         }
+        
+        // Move to trading preferences step
+        setCurrentStep(2);
       } else if (currentStep === 4) {
-        // Complete onboarding - save all settings
-        if (!userToken) {
-          alert('Authentication required. Please start over.');
-          setCurrentStep(1);
+        // Complete onboarding - NOW create user and save all settings
+        
+        // Validate that API keys are generated
+        if (!_apiKeysGenerated || !formData.client_id || !formData.public_key || !formData.private_key) {
+          alert('Please complete the API key generation process first');
+          setCurrentStep(3);
           setLoading(false);
           return;
         }
 
+        // Step 1: Create user account
+        const registerResponse = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            full_name: formData.full_name,
+            email: formData.email,
+            phone_number: `+91${formData.phone_number}`,
+            password: formData.password
+          })
+        });
+
+        const registerResult = await registerResponse.json();
+        if (!registerResult.success) {
+          alert(registerResult.error || 'Failed to create user account');
+          setLoading(false);
+          return;
+        }
+
+        // Step 2: Login to get user token
+        const loginResponse = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: formData.email,
+            password: formData.password
+          })
+        });
+
+        const loginResult = await loginResponse.json();
+        if (!loginResult.success) {
+          alert('User created but login failed. Please try logging in manually.');
+          setLoading(false);
+          return;
+        }
+
+        localStorage.setItem('userToken', loginResult.token);
+        setUserToken(loginResult.token);
+
+        // Step 3: Save all trading settings and API credentials
         const setupResponse = await fetch('/api/onboarding/trading-setup', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${userToken}`
+            'Authorization': `Bearer ${loginResult.token}`
           },
           body: JSON.stringify({
             total_capital: parseFloat(formData.total_capital),
@@ -395,7 +411,7 @@ export default function OnboardingFlow() {
         if (setupResult.success) {
           setCurrentStep(5);
         } else {
-          alert(setupResult.error);
+          alert(setupResult.error || 'Failed to save trading settings');
         }
       } else {
         setCurrentStep(currentStep + 1);

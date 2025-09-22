@@ -26,6 +26,22 @@ export async function POST(request: NextRequest) {
       })
     });
 
+    // Check if response is JSON
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      const textResponse = await response.text();
+      console.error('Non-JSON response from Lemon API:', textResponse.substring(0, 200));
+      return NextResponse.json({
+        success: false,
+        error: 'Invalid response from Lemon API - not JSON format',
+        debug_info: {
+          status: response.status,
+          content_type: contentType,
+          response_preview: textResponse.substring(0, 200)
+        }
+      }, { status: 502 });
+    }
+
     const result = await response.json();
 
     if (result.status === 'success') {
