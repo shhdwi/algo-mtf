@@ -662,7 +662,7 @@ class LemonTradingService {
           'x-api-key': publicKey,
           'x-client-id': clientId,
           'x-signature': signature,
-          'x-timestamp': epochTime
+          'x-epoch-time': epochTime  // Use x-epoch-time instead of x-timestamp
         }
       });
 
