@@ -4,7 +4,14 @@ import bcrypt from 'bcryptjs';
 
 export async function POST(request: NextRequest) {
   try {
-    const { email, password, full_name, phone_number } = await request.json();
+    const requestBody = await request.json();
+    console.log('🔍 Register API - Request Body:', requestBody);
+    
+    const { email, password, full_name, phone_number } = requestBody;
+
+    console.log('🔍 Register API - Phone Number Received:', phone_number);
+    console.log('🔍 Register API - Phone Number Length:', phone_number?.length);
+    console.log('🔍 Register API - Phone Number Type:', typeof phone_number);
 
     // Validate required fields
     if (!email || !password || !full_name || !phone_number) {
@@ -23,11 +30,20 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Validate phone number (10 digits)
-    if (!/^\d{10}$/.test(phone_number)) {
+    // Extract and validate phone number (handle +91 prefix)
+    const cleanPhoneNumber = phone_number.replace(/^\+91/, '').replace(/\D/g, '');
+    console.log('🔍 Register API - Clean Phone Number:', cleanPhoneNumber);
+    console.log('🔍 Register API - Clean Phone Length:', cleanPhoneNumber.length);
+    
+    if (!/^\d{10}$/.test(cleanPhoneNumber)) {
       return NextResponse.json({
         success: false,
-        error: 'Phone number must be exactly 10 digits'
+        error: 'Phone number must be exactly 10 digits',
+        debug_info: {
+          received: phone_number,
+          cleaned: cleanPhoneNumber,
+          length: cleanPhoneNumber.length
+        }
       }, { status: 400 });
     }
 
@@ -61,14 +77,17 @@ export async function POST(request: NextRequest) {
     // Hash password
     const passwordHash = await bcrypt.hash(password, 10);
 
-    // Create user
+    // Create user (store phone number with +91 prefix)
+    const formattedPhoneNumber = `+91${cleanPhoneNumber}`;
+    console.log('🔍 Register API - Storing Phone Number:', formattedPhoneNumber);
+    
     const { data: user, error: userError } = await supabase
       .from('users')
       .insert({
         email,
         password_hash: passwordHash,
         full_name,
-        phone_number
+        phone_number: formattedPhoneNumber
       })
       .select('id, email, full_name')
       .single();

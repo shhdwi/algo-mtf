@@ -196,11 +196,14 @@ export default function OnboardingFlow() {
 
     setLoading(true);
     try {
+      // Clean phone number to 10 digits only for Lemon API
+      const cleanPhone = formData.lemon_phone.replace(/^\+91/, '').replace(/\D/g, '');
+      
       const response = await fetch('/api/lemon-auth/request-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          phone_number: formData.lemon_phone,
+          phone_number: cleanPhone, // Use 10-digit number for Lemon API
           client_id: formData.lemon_client_id
         })
       });
@@ -229,11 +232,14 @@ export default function OnboardingFlow() {
 
     setLoading(true);
     try {
+      // Clean phone number to 10 digits only for Lemon API
+      const cleanPhone = formData.lemon_phone.replace(/^\+91/, '').replace(/\D/g, '');
+      
       const response = await fetch('/api/lemon-auth/validate-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          phone_number: formData.lemon_phone,
+          phone_number: cleanPhone, // Use 10-digit number for Lemon API
           otp: formData.otp_code
         })
       });
@@ -358,13 +364,16 @@ export default function OnboardingFlow() {
         }
 
         // Step 1: Create user account
+        // Extract 10-digit phone number from lemon_phone (remove +91 prefix if present)
+        const cleanPhoneNumber = formData.lemon_phone.replace(/^\+91/, '').replace(/\D/g, '');
+        
         const registerResponse = await fetch('/api/auth/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             full_name: formData.full_name,
             email: formData.email,
-            phone_number: `+91${formData.phone_number}`,
+            phone_number: `+91${cleanPhoneNumber}`, // Use cleaned 10-digit number
             password: formData.password
           })
         });
