@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${access_token}` // Add authentication
+        'x-auth-key': access_token // Use x-auth-key header as per Lemon API docs
       },
       body: JSON.stringify({
         client_id: client_id,
