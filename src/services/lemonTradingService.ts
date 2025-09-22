@@ -517,17 +517,24 @@ class LemonTradingService {
    */
   async getEligibleTradingUsers(): Promise<string[]> {
     try {
+      console.log('🔍 Fetching eligible users for real trading...');
+      
       const { data: users, error } = await this.supabase
         .from('trading_preferences')
-        .select('user_id')
-        .eq('is_real_trading_enabled', true);
+        .select(`
+          user_id,
+          users!inner(full_name, is_active)
+        `)
+        .eq('is_real_trading_enabled', true)
+        .eq('users.is_active', true);
 
       if (error) {
         console.error('Error getting eligible users:', error);
         return [];
       }
 
-      return users.map(u => u.user_id);
+      console.log(`✅ Found ${users?.length || 0} eligible users for real trading`);
+      return users?.map(u => u.user_id) || [];
 
     } catch (error) {
       console.error('Error getting eligible trading users:', error);

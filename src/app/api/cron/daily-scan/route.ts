@@ -2,11 +2,71 @@ import { NextRequest, NextResponse } from 'next/server';
 import UltimateScannerService from '@/services/ultimateScannerService';
 import LemonTradingService from '@/services/lemonTradingService';
 import WhatsAppService from '@/services/whatsappService';
+import { createClient } from '@supabase/supabase-js';
+
+/**
+ * Create algorithm positions (source of truth)
+ */
+async function createAlgorithmPositions(entrySignals: any[]) {
+  const supabase = createClient(
+    process.env.SUPABASE_URL || 'https://yvvqgxqxmsccswmuwvdj.supabase.co',
+    process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl2dnFneHF4bXNjY3N3bXV3dmRqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc0MTgyNjIsImV4cCI6MjA3Mjk5NDI2Mn0.T9-4zMdNu5WoO4QG7TttDULjaDQybl2ZVkS8xvIullI'
+  );
+
+  console.log(`📊 Creating ${entrySignals.length} algorithm positions (source of truth)...`);
+
+  for (const signal of entrySignals) {
+    try {
+      // Check if algorithm position already exists for this symbol
+      const { data: existingPosition } = await supabase
+        .from('algorithm_positions')
+        .select('id')
+        .eq('symbol', signal.symbol)
+        .eq('status', 'ACTIVE')
+        .single();
+
+      if (existingPosition) {
+        console.log(`⚠️ Algorithm position already exists for ${signal.symbol}, skipping`);
+        continue;
+      }
+
+      // Create algorithm position
+      const { error } = await supabase
+        .from('algorithm_positions')
+        .insert({
+          symbol: signal.symbol,
+          entry_date: new Date().toISOString().split('T')[0],
+          entry_time: new Date().toISOString(),
+          entry_price: signal.current_price,
+          current_price: signal.current_price,
+          pnl_amount: 0,
+          pnl_percentage: 0,
+          status: 'ACTIVE',
+          trailing_level: 0,
+          scanner_signal_id: `ALGO_${signal.symbol}_${Date.now()}`
+        });
+
+      if (error) {
+        console.error(`❌ Failed to create algorithm position for ${signal.symbol}:`, error);
+      } else {
+        console.log(`✅ Algorithm position created: ${signal.symbol} at ₹${signal.current_price}`);
+      }
+
+    } catch (error) {
+      console.error(`Error creating algorithm position for ${signal.symbol}:`, error);
+    }
+  }
+}
 
 /**
  * Execute real trading signals directly (no HTTP call)
  */
 async function executeRealTradingSignals(entrySignals: any[], sendWhatsApp: boolean = true) {
+  const supabase = createClient(
+    process.env.SUPABASE_URL || 'https://yvvqgxqxmsccswmuwvdj.supabase.co',
+    process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl2dnFneHF4bXNjY3N3bXV3dmRqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc0MTgyNjIsImV4cCI6MjA3Mjk5NDI2Mn0.T9-4zMdNu5WoO4QG7TttDULjaDQybl2ZVkS8xvIullI'
+  );
+
   try {
     console.log('🚀 Starting Real Trading Signal Execution (Direct)...');
     console.log(`📊 Using ${entrySignals.length} pre-scanned entry signals for real trading`);
@@ -59,6 +119,29 @@ async function executeRealTradingSignals(entrySignals: any[], sendWhatsApp: bool
             continue;
           }
 
+          // Check if user already has an active position for this symbol
+          const { data: existingUserPosition } = await supabase
+            .from('user_positions')
+            .select('id')
+            .eq('user_id', userId)
+            .eq('symbol', signal.symbol)
+            .eq('status', 'ACTIVE')
+            .single();
+
+          if (existingUserPosition) {
+            console.log(`⚠️ User ${userId} already has active position for ${signal.symbol}, skipping`);
+            userResults.orders_failed++;
+            continue;
+          }
+
+          // Get the algorithm position ID for linking
+          const { data: algoPosition } = await supabase
+            .from('algorithm_positions')
+            .select('id')
+            .eq('symbol', signal.symbol)
+            .eq('status', 'ACTIVE')
+            .single();
+
           // Calculate position size based on MTF margin for this stock
           const positionSize = await lemonService.calculatePositionSize(userId, signal.symbol, signal.current_price);
           if (!positionSize || positionSize.quantity === 0) {
@@ -83,9 +166,64 @@ async function executeRealTradingSignals(entrySignals: any[], sendWhatsApp: bool
             userResults.orders_placed++;
             totalOrdersPlaced++;
             
-            // Create real position
+            // Create user position in new table
             if (orderResult.order_id) {
-              await lemonService.createRealPosition(userId, orderResult.order_id, signal.current_price);
+              try {
+                // First create the order record
+                const { data: orderRecord, error: orderError } = await supabase
+                  .from('real_orders')
+                  .insert({
+                    user_id: userId,
+                    lemon_order_id: orderResult.order_id,
+                    symbol: signal.symbol,
+                    transaction_type: 'BUY',
+                    order_type: 'MARKET',
+                    quantity: positionSize.quantity,
+                    price: signal.current_price,
+                    order_status: orderResult.order_status || 'PLACED',
+                    order_reason: 'ENTRY_SIGNAL_MTF',
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString()
+                  })
+                  .select()
+                  .single();
+
+                if (!orderError && orderRecord) {
+                  // Then create the user position
+                  const { error: positionError } = await supabase
+                    .from('user_positions')
+                    .insert({
+                      user_id: userId,
+                      symbol: signal.symbol,
+                      entry_order_id: orderRecord.id,
+                      entry_price: signal.current_price,
+                      entry_quantity: positionSize.quantity,
+                      entry_value: positionSize.amount,
+                      current_price: signal.current_price,
+                      pnl_amount: 0,
+                      pnl_percentage: 0,
+                      status: 'ACTIVE',
+                      trailing_level: 0,
+                      entry_date: new Date().toISOString().split('T')[0],
+                      entry_time: new Date().toISOString(),
+                      scanner_signal_id: `USER_${userId}_${signal.symbol}_${Date.now()}`,
+                      algorithm_position_id: algoPosition?.id,
+                      created_at: new Date().toISOString(),
+                      updated_at: new Date().toISOString()
+                    });
+
+                  if (positionError) {
+                    console.error(`❌ Failed to create user position for ${signal.symbol}:`, positionError);
+                  } else {
+                    console.log(`✅ User position created: ${signal.symbol} for user ${userId}`);
+                  }
+                } else {
+                  console.error(`❌ Failed to create order record for ${signal.symbol}:`, orderError);
+                }
+
+              } catch (positionCreationError) {
+                console.error(`Error creating user position for ${signal.symbol}:`, positionCreationError);
+              }
             }
             
             userResults.orders.push({
@@ -218,12 +356,15 @@ export async function GET(request: NextRequest) {
 
     console.log('🕒 Cron: Starting daily scan at 3:15 PM IST...');
     
-    // Execute paper trading (existing system)
+    // Execute algorithm scan (source of truth)
     const scanner = new UltimateScannerService();
     const scanResults = await scanner.ultimateScanWithPositionManagement('NSE', true);
     
-    // Execute real trading for eligible users using the same scan results
+    // Create algorithm positions (source of truth) in new table
     const entrySignals = scanResults.results.filter(r => r.signal === 'ENTRY');
+    await createAlgorithmPositions(entrySignals);
+    
+    // Execute real trading for eligible users using the same scan results
     const realTradingResults = await executeRealTradingSignals(entrySignals, true);
     
     console.log('✅ Cron: Daily scan completed successfully (paper + real trading)');
