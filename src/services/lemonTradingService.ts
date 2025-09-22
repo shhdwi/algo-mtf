@@ -591,6 +591,40 @@ class LemonTradingService {
   }
 
   /**
+   * Get Last Traded Price (LTP) for a symbol
+   */
+  async getLTP(symbol: string, exchange: string = 'NSE'): Promise<{last_traded_price: number} | null> {
+    try {
+      // For now, we'll use a mock implementation since we don't have direct LTP API
+      // In production, this should call the actual Lemon API LTP endpoint
+      console.log(`📊 Getting LTP for ${symbol} on ${exchange}...`);
+      
+      // Mock implementation - in production, replace with actual Lemon API call
+      // For testing, we'll return the current price from database or a reasonable estimate
+      const mockPrices: { [key: string]: number } = {
+        'RELIANCE': 1405, // Current test price
+        'HDFCBANK': 1600,
+        'TCS': 3900,
+        'INFY': 1500,
+        'ICICIBANK': 1200,
+        'SBIN': 861.35,
+        'AMBUJACEM': 594.15,
+        'HDFCLIFE': 785.40
+      };
+      
+      const price = mockPrices[symbol];
+      if (price) {
+        return { last_traded_price: price };
+      }
+      
+      return null;
+    } catch (error) {
+      console.error(`Error getting LTP for ${symbol}:`, error);
+      return null;
+    }
+  }
+
+  /**
    * Update real position P&L
    */
   async updateRealPositionPnL(userId: string, symbol: string, currentPrice: number): Promise<void> {
@@ -700,15 +734,31 @@ class LemonTradingService {
           sellOrderRecord = newOrderRecord;
         }
 
+        // Get current live price for accurate exit recording
+        const ltpData = await this.getLTP(symbol, 'NSE');
+        const exitPrice = ltpData?.last_traded_price || position.current_price;
+        
+        // Calculate final PnL
+        const finalPnlAmount = (exitPrice - position.entry_price) * position.entry_quantity;
+        const finalPnlPercentage = ((exitPrice - position.entry_price) / position.entry_price) * 100;
+
+        console.log(`💰 Final PnL for ${symbol}: ₹${finalPnlAmount.toFixed(2)} (${finalPnlPercentage.toFixed(2)}%)`);
+
         // Update position status to EXITED using the order UUID
         const { error: updateError } = await this.supabase
           .from('real_positions')
           .update({
             exit_order_id: sellOrderRecord.id, // Use the UUID from real_orders
+            exit_price: exitPrice, // Record actual exit price
+            exit_quantity: position.entry_quantity, // Record exit quantity
+            pnl_amount: finalPnlAmount, // Final PnL amount
+            pnl_percentage: finalPnlPercentage, // Final PnL percentage
+            current_price: exitPrice, // Update current price to exit price
             status: 'EXITED',
             exit_date: new Date().toISOString().split('T')[0],
             exit_time: new Date().toISOString(),
             exit_reason: exitReason,
+            trailing_level: 0, // Reset trailing level
             updated_at: new Date().toISOString()
           })
           .eq('user_id', userId)

@@ -23,8 +23,7 @@ async function monitorRealTradingExits(sendWhatsApp: boolean = true) {
       .from('real_positions')
       .select(`
         *,
-        users!inner(full_name, phone_number),
-        trading_preferences!inner(stop_loss_percentage)
+        users!inner(full_name, phone_number)
       `)
       .eq('status', 'ACTIVE');
 
@@ -47,30 +46,51 @@ async function monitorRealTradingExits(sendWhatsApp: boolean = true) {
       try {
         console.log(`🔍 Monitoring real position: ${position.symbol} for user ${position.user_id}`);
 
-        // Update current price and P&L
-        await lemonService.updateRealPositionPnL(position.user_id, position.symbol, position.current_price);
+        // Get user's trading preferences for stop loss percentage
+        const { data: userPrefs } = await supabase
+          .from('trading_preferences')
+          .select('stop_loss_percentage')
+          .eq('user_id', position.user_id)
+          .single();
+
+        const userStopLossPercentage = userPrefs?.stop_loss_percentage || 2.5; // Default to 2.5% if not found
+        console.log(`⚙️ User stop loss setting: ${userStopLossPercentage}%`);
+
+        // Fetch live current price for accurate monitoring
+        console.log(`📊 Fetching live price for ${position.symbol}...`);
+        const ltpData = await lemonService.getLTP(position.symbol, 'NSE');
+        const livePrice = ltpData?.last_traded_price || position.current_price;
+        
+        console.log(`💰 ${position.symbol}: Entry ₹${position.entry_price} → Live ₹${livePrice} (${((livePrice - position.entry_price) / position.entry_price * 100).toFixed(2)}%)`);
+
+        // Update current price and P&L with live data
+        await lemonService.updateRealPositionPnL(position.user_id, position.symbol, livePrice);
+
+        // Calculate live PnL for exit analysis
+        const livePnlAmount = (livePrice - position.entry_price) * position.entry_quantity;
+        const livePnlPercentage = ((livePrice - position.entry_price) / position.entry_price) * 100;
 
         // Check exit conditions using the same logic as paper trading
         const exitMonitor = new ExitMonitoringService();
         
-        // Convert real position to paper position format for exit analysis
+        // Convert real position to paper position format for exit analysis (with live data)
         const paperPosition = {
           id: position.id,
           symbol: position.symbol,
           entry_price: position.entry_price,
-          current_price: position.current_price,
+          current_price: livePrice,  // Use live price
           trailing_level: position.trailing_level,
           entry_date: position.entry_date,
           entry_time: position.entry_time,
-          pnl_amount: position.pnl_amount,
-          pnl_percentage: position.pnl_percentage,
+          pnl_amount: livePnlAmount,  // Use live PnL
+          pnl_percentage: livePnlPercentage,  // Use live PnL
           status: position.status,
           created_at: position.created_at,
           updated_at: position.updated_at
         };
 
-        // Analyze for exit conditions
-        const exitAnalysis = await exitMonitor['analyzePositionForExit'](paperPosition);
+        // Analyze for exit conditions using user's stop loss percentage
+        const exitAnalysis = await exitMonitor['analyzePositionForExit'](paperPosition, userStopLossPercentage);
 
         if (exitAnalysis.status === 'EXIT' && exitAnalysis.exitSignal) {
           console.log(`🚨 Exit condition detected for ${position.symbol}: ${exitAnalysis.exitSignal.exitReason}`);

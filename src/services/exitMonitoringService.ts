@@ -190,7 +190,7 @@ class ExitMonitoringService {
   /**
    * Analyze single position for exit conditions
    */
-  private async analyzePositionForExit(position: Position): Promise<PositionMonitorResult> {
+  private async analyzePositionForExit(position: Position, customStopLossPercentage?: number): Promise<PositionMonitorResult> {
     // Get current market data
     const tradingData = await this.combinedTradingService.getCombinedTradingData(position.symbol, 'NSE');
     
@@ -243,8 +243,9 @@ class ExitMonitoringService {
       };
     }
 
-    // Priority 2: Check Stop Loss (2.5% below entry)
-    if (pnlPercentage <= -2.5) {
+    // Priority 2: Check Stop Loss (user-defined percentage or default 2.5%)
+    const stopLossThreshold = -(customStopLossPercentage || 2.5);
+    if (pnlPercentage <= stopLossThreshold) {
       return {
         symbol: position.symbol,
         status: 'EXIT',
@@ -254,7 +255,7 @@ class ExitMonitoringService {
         exitSignal: {
           position,
           exitType: 'STOP_LOSS',
-          exitReason: `Stop loss hit: Price dropped 2.5% below entry (${pnlPercentage.toFixed(2)}%)`,
+          exitReason: `Stop loss hit: Price dropped ${Math.abs(stopLossThreshold)}% below entry (${pnlPercentage.toFixed(2)}%)`,
           currentPrice,
           exitPrice: currentPrice,
           pnlAmount,
