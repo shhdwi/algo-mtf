@@ -4,12 +4,12 @@ const LEMON_BASE_URL = 'https://cs-prod.lemonn.co.in';
 
 export async function POST(request: NextRequest) {
   try {
-    const { phone_number } = await request.json();
+    const { phone_number, client_id } = await request.json();
 
-    if (!phone_number) {
+    if (!phone_number || !client_id) {
       return NextResponse.json({
         success: false,
-        error: 'Phone number is required'
+        error: 'Phone number and client ID are required'
       }, { status: 400 });
     }
 
@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
       },
       body: JSON.stringify({
         phone_number: phone_number,
-        client_id: `CLIENT_${Date.now()}` // Generate unique client_id as required by API
+        client_id: client_id // Use user-provided client_id
       })
     });
 

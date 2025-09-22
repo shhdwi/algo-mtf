@@ -71,6 +71,7 @@ export default function OnboardingFlow() {
     lemon_phone: '',
     lemon_pin: '',
     otp_code: '',
+    lemon_client_id: '', // User-provided client ID
     
     // Generated automatically (hidden from user)
     client_id: '',
@@ -188,8 +189,8 @@ export default function OnboardingFlow() {
 
   // API Key Generation Functions
   const requestOTP = async () => {
-    if (!formData.lemon_phone) {
-      alert('Please enter your phone number');
+    if (!formData.lemon_phone || !formData.lemon_client_id) {
+      alert('Please enter your phone number and client ID');
       return;
     }
 
@@ -199,7 +200,8 @@ export default function OnboardingFlow() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          phone_number: formData.lemon_phone
+          phone_number: formData.lemon_phone,
+          client_id: formData.lemon_client_id
         })
       });
 
@@ -280,26 +282,30 @@ export default function OnboardingFlow() {
         return;
       }
 
-      // Step 2: Generate API Keys (using the client_id from OTP request)
-      const clientId = `CLIENT_${Date.now()}_${formData.lemon_phone.replace(/\D/g, '').slice(-4)}`;
+      // Step 2: Generate API Keys (using the user-provided client_id)
+      console.log('🔍 Debug - PIN Result:', pinResult);
+      console.log('🔍 Debug - User Client ID:', formData.lemon_client_id);
+      console.log('🔍 Debug - Access Token:', pinResult.access_token);
       
       const keyResponse = await fetch('/api/lemon-auth/generate-api-key', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          client_id: clientId,
+          client_id: formData.lemon_client_id, // Use user-provided client_id
           access_token: pinResult.access_token, // Pass the access token from PIN validation
           ip_whitelist: ['0.0.0.0/0'] // Allow all IPs
         })
       });
 
       const keyResult = await keyResponse.json();
+      console.log('🔍 Debug - Key Generation Result:', keyResult);
+      
       if (keyResult.success) {
         // Auto-populate the API credentials
         setFormData(prev => ({
           ...prev,
           auth_token: pinResult.access_token,
-          client_id: keyResult.api_credentials.client_id,
+          client_id: formData.lemon_client_id, // Use the user-provided client_id
           public_key: keyResult.api_credentials.public_key,
           private_key: keyResult.api_credentials.private_key
         }));
@@ -589,11 +595,28 @@ export default function OnboardingFlow() {
                     📱 Your registered phone number with Lemon API
                   </p>
                 </div>
+
+                <div>
+                  <label className="block text-sm font-bold text-slate-800 mb-3">
+                    Client ID <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.lemon_client_id}
+                    onChange={(e) => setFormData({...formData, lemon_client_id: e.target.value})}
+                    className="w-full px-6 py-4 border-2 border-slate-300 rounded-2xl bg-white focus:ring-4 focus:ring-green-200 focus:border-green-400 transition-all duration-200 text-slate-900 placeholder-slate-500 shadow-lg hover:border-green-300 text-lg font-mono"
+                    placeholder="CLIENT123"
+                    required
+                  />
+                  <p className="text-sm font-medium text-green-600 mt-2">
+                    🆔 Your unique Lemon API client identifier (min 3 characters)
+                  </p>
+                </div>
                 
                 <button
                   type="button"
                   onClick={requestOTP}
-                  disabled={loading || !formData.lemon_phone}
+                  disabled={loading || !formData.lemon_phone || !formData.lemon_client_id}
                   className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-bold py-4 px-8 rounded-2xl transition-all duration-300 transform hover:scale-105 shadow-xl disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none text-lg"
                 >
                   {loading ? 'Sending OTP...' : 'Send OTP'}

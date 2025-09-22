@@ -4,12 +4,23 @@ const LEMON_BASE_URL = 'https://cs-prod.lemonn.co.in';
 
 export async function POST(request: NextRequest) {
   try {
-    const { client_id, access_token, ip_whitelist = ['0.0.0.0/0'] } = await request.json();
+    const requestBody = await request.json();
+    console.log('🔍 Debug - Request Body:', requestBody);
+    
+    const { client_id, access_token, ip_whitelist = ['0.0.0.0/0'] } = requestBody;
+
+    console.log('🔍 Debug - Extracted client_id:', client_id);
+    console.log('🔍 Debug - Extracted access_token:', access_token);
 
     if (!client_id || !access_token) {
       return NextResponse.json({
         success: false,
-        error: 'Client ID and access token are required'
+        error: 'Client ID and access token are required',
+        debug_info: {
+          received_client_id: client_id,
+          received_access_token: access_token ? 'present' : 'missing',
+          request_body: requestBody
+        }
       }, { status: 400 });
     }
 
