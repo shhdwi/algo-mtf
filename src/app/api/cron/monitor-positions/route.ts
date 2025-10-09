@@ -106,6 +106,18 @@ async function monitorRealTradingExits(sendWhatsApp: boolean = true) {
         if (exitAnalysis.status === 'EXIT' && exitAnalysis.exitSignal) {
           console.log(`🚨 Exit condition detected for ${position.symbol}: ${exitAnalysis.exitSignal.exitReason}`);
 
+          // Prevent exits within 1 hour of entry
+          const entryTime = new Date(position.entry_time);
+          const now = new Date();
+          const hoursSinceEntry = (now.getTime() - entryTime.getTime()) / (1000 * 60 * 60); // Convert ms to hours
+          
+          if (hoursSinceEntry < 1) {
+            const minutesSinceEntry = Math.floor((now.getTime() - entryTime.getTime()) / (1000 * 60));
+            console.log(`⚠️ 1-hour exit window active for ${position.symbol} (entered ${minutesSinceEntry} minutes ago, need 60 minutes)`);
+            consecutiveFailures = 0; // Reset since this is expected behavior
+            continue; // Skip to next position
+          }
+
           // Place real exit order via Lemon API (handles AMO automatically)
           const exitOrderResult = await lemonService.exitRealPosition(
             position.user_id,
@@ -158,6 +170,46 @@ async function monitorRealTradingExits(sendWhatsApp: boolean = true) {
             }
 
             console.log(`✅ Real position exited: ${position.symbol} for user ${position.user_id}`);
+
+            // Check if all users have exited this symbol, if so, update algorithm position
+            try {
+              const { data: remainingUserPositions, error: checkError } = await supabase
+                .from('user_positions')
+                .select('id')
+                .eq('symbol', position.symbol)
+                .eq('status', 'ACTIVE');
+
+              if (!checkError && (!remainingUserPositions || remainingUserPositions.length === 0)) {
+                console.log(`🔄 All users exited ${position.symbol}, syncing algorithm position...`);
+                
+                // Update algorithm position to EXITED
+                const { error: algoUpdateError } = await supabase
+                  .from('algorithm_positions')
+                  .update({
+                    status: 'EXITED',
+                    exit_date: new Date().toISOString().split('T')[0],
+                    exit_time: new Date().toISOString(),
+                    exit_price: exitAnalysis.currentPrice,
+                    exit_reason: exitAnalysis.exitSignal.exitType,
+                    current_price: exitAnalysis.currentPrice,
+                    pnl_amount: exitAnalysis.pnlAmount,
+                    pnl_percentage: exitAnalysis.pnlPercentage,
+                    updated_at: new Date().toISOString()
+                  })
+                  .eq('symbol', position.symbol)
+                  .eq('status', 'ACTIVE');
+
+                if (algoUpdateError) {
+                  console.error(`❌ Failed to sync algorithm position for ${position.symbol}:`, algoUpdateError);
+                } else {
+                  console.log(`✅ Algorithm position synced for ${position.symbol}`);
+                }
+              } else if (remainingUserPositions && remainingUserPositions.length > 0) {
+                console.log(`📊 ${position.symbol}: ${remainingUserPositions.length} user(s) still have active positions`);
+              }
+            } catch (syncError) {
+              console.error(`❌ Error syncing algorithm position for ${position.symbol}:`, syncError);
+            }
 
           } else {
             totalExitsFailed++;

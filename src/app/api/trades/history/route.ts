@@ -16,9 +16,9 @@ export async function GET(request: NextRequest) {
       process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl2dnFneHF4bXNjY3N3bXV3dmRqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc0MTgyNjIsImV4cCI6MjA3Mjk5NDI2Mn0.T9-4zMdNu5WoO4QG7TttDULjaDQybl2ZVkS8xvIullI'
     );
 
-    // Build query for positions (both paper and real trading)
-    let paperQuery = supabase
-      .from('positions')
+    // Build query for positions (algorithm and user positions)
+    let algorithmQuery = supabase
+      .from('algorithm_positions')
       .select(`
         id,
         symbol,
@@ -40,8 +40,8 @@ export async function GET(request: NextRequest) {
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
-    let realQuery = supabase
-      .from('real_positions')
+    let userQuery = supabase
+      .from('user_positions')
       .select(`
         id,
         user_id,
@@ -70,54 +70,54 @@ export async function GET(request: NextRequest) {
 
     // Apply filters
     if (userId) {
-      realQuery = realQuery.eq('user_id', userId);
+      userQuery = userQuery.eq('user_id', userId);
     }
 
     if (dateFrom) {
-      paperQuery = paperQuery.gte('entry_date', dateFrom);
-      realQuery = realQuery.gte('entry_date', dateFrom);
+      algorithmQuery = algorithmQuery.gte('entry_date', dateFrom);
+      userQuery = userQuery.gte('entry_date', dateFrom);
     }
 
     if (dateTo) {
-      paperQuery = paperQuery.lte('entry_date', dateTo);
-      realQuery = realQuery.lte('entry_date', dateTo);
+      algorithmQuery = algorithmQuery.lte('entry_date', dateTo);
+      userQuery = userQuery.lte('entry_date', dateTo);
     }
 
     if (symbol) {
-      paperQuery = paperQuery.eq('symbol', symbol);
-      realQuery = realQuery.eq('symbol', symbol);
+      algorithmQuery = algorithmQuery.eq('symbol', symbol);
+      userQuery = userQuery.eq('symbol', symbol);
     }
 
     // Execute queries
-    const [paperResult, realResult] = await Promise.all([
-      paperQuery,
-      realQuery
+    const [algorithmResult, userResult] = await Promise.all([
+      algorithmQuery,
+      userQuery
     ]);
 
-    if (paperResult.error) {
-      console.error('Error fetching paper positions:', paperResult.error);
+    if (algorithmResult.error) {
+      console.error('Error fetching algorithm positions:', algorithmResult.error);
     }
 
-    if (realResult.error) {
-      console.error('Error fetching real positions:', realResult.error);
+    if (userResult.error) {
+      console.error('Error fetching user positions:', userResult.error);
     }
 
-    const paperTrades = paperResult.data || [];
-    const realTrades = realResult.data || [];
+    const algorithmTrades = algorithmResult.data || [];
+    const userTrades = userResult.data || [];
 
     // Transform and combine trades
     const allTrades = [
-      ...paperTrades.map(trade => ({
+      ...algorithmTrades.map(trade => ({
         ...trade,
         trade_type: 'PAPER',
-        user_name: 'Paper Trading',
-        quantity: 1, // Paper trading uses 1 share
+        user_name: 'Algorithm',
+        quantity: 1, // Algorithm positions use 1 share for percentage tracking
         total_investment: trade.entry_price || 0,
         total_exit_value: trade.exit_price || trade.current_price || 0,
         absolute_pnl: trade.pnl_amount || 0,
         percentage_pnl: trade.pnl_percentage || 0
       })),
-      ...realTrades.map(trade => ({
+      ...userTrades.map(trade => ({
         ...trade,
         trade_type: 'REAL',
         user_name: (trade.users as any)?.full_name || 'Unknown User',
@@ -135,16 +135,16 @@ export async function GET(request: NextRequest) {
     // Calculate summary statistics
     const summary = {
       total_trades: allTrades.length,
-      paper_trades: paperTrades.length,
-      real_trades: realTrades.length,
+      paper_trades: algorithmTrades.length,
+      real_trades: userTrades.length,
       active_trades: allTrades.filter(t => t.status === 'ACTIVE').length,
       exited_trades: allTrades.filter(t => t.status === 'EXITED').length,
       stopped_trades: allTrades.filter(t => t.status === 'STOPPED').length,
       
       // PnL Statistics
       total_pnl: allTrades.reduce((sum, t) => sum + (t.absolute_pnl || 0), 0),
-      paper_pnl: paperTrades.reduce((sum, t) => sum + (t.pnl_amount || 0), 0),
-      real_pnl: realTrades.reduce((sum, t) => sum + ((t.pnl_amount || 0) * (t.entry_quantity || 0)), 0),
+      paper_pnl: algorithmTrades.reduce((sum, t) => sum + (t.pnl_amount || 0), 0),
+      real_pnl: userTrades.reduce((sum, t) => sum + ((t.pnl_amount || 0) * (t.entry_quantity || 0)), 0),
       
       // Win/Loss Statistics
       winning_trades: allTrades.filter(t => (t.absolute_pnl || 0) > 0).length,

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { TrendingUp, TrendingDown, DollarSign, Activity, RefreshCw, BarChart3, ExternalLink } from 'lucide-react';
+import { TrendingUp, TrendingDown, DollarSign, Activity, RefreshCw, BarChart3, ExternalLink, Users } from 'lucide-react';
 
 interface Position {
   symbol: string;
@@ -122,6 +122,14 @@ export default function Dashboard() {
               >
                 <BarChart3 className="w-4 h-4 mr-2" />
                 Trade History
+                <ExternalLink className="w-3 h-3 ml-1" />
+              </a>
+              <a
+                href="/users-pnl"
+                className="inline-flex items-center px-4 py-2 border border-teal-300 rounded-xl shadow-sm text-sm font-medium text-teal-700 bg-teal-50 hover:bg-teal-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 transition-all duration-300"
+              >
+                <Users className="w-4 h-4 mr-2" />
+                User P&L
                 <ExternalLink className="w-3 h-3 ml-1" />
               </a>
               <button

@@ -36,6 +36,21 @@ async function executeRealTradingSignals(entrySignals: any[], sendWhatsApp: bool
     const eligibleUsers = await lemonService.getEligibleTradingUsers();
     console.log(`👥 Found ${eligibleUsers.length} users eligible for real trading`);
     console.log(`👥 Eligible user IDs:`, eligibleUsers);
+    
+    if (eligibleUsers.length === 0) {
+      console.log('🚨 NO ELIGIBLE USERS FOUND - Real trading will be skipped!');
+      return {
+        success: true,
+        message: 'No eligible users for real trading',
+        real_trading_results: {
+          eligible_users: 0,
+          orders_placed: 0,
+          orders_failed: 0,
+          signals_processed: entrySignals.length,
+          reason: 'No users eligible for real trading'
+        }
+      };
+    }
 
     let totalOrdersPlaced = 0;
     let totalOrdersFailed = 0;
@@ -160,6 +175,9 @@ async function executeRealTradingSignals(entrySignals: any[], sendWhatsApp: bool
                     pnl_percentage: 0,
                     status: orderResult.is_amo ? 'PENDING_AMO' : 'ACTIVE', // Different status for AMO orders
                     trailing_level: 0,
+                    margin_required: positionSize.marginRequired,
+                    leverage: positionSize.leverage,
+                    margin_per_share: positionSize.marginRequired / positionSize.quantity,
                     entry_date: new Date().toISOString().split('T')[0],
                     entry_time: new Date().toISOString(),
                     scanner_signal_id: `USER_${userId}_${signal.symbol}_${Date.now()}`,
@@ -339,9 +357,15 @@ export async function GET(request: NextRequest) {
     // Get entry signals for real trading (algorithm positions already created by scanner)
     const entrySignals = scanResults.results.filter(r => r.signal === 'ENTRY');
     console.log(`📊 Found ${entrySignals.length} entry signals for real trading`);
+    console.log(`📊 Entry signals details:`, entrySignals.map(s => ({ symbol: s.symbol, price: s.current_price, signal: s.signal })));
+    
+    if (entrySignals.length === 0) {
+      console.log('🚨 NO ENTRY SIGNALS FOUND - No real trading to execute!');
+    }
     
     // Execute real trading for eligible users using the same scan results
     const realTradingResults = await executeRealTradingSignals(entrySignals, true);
+    console.log(`🚀 Real trading execution result:`, realTradingResults);
     
     console.log('✅ Cron: Daily scan completed successfully (paper + real trading)');
     

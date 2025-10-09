@@ -604,63 +604,102 @@ class LemonTradingService {
   }
 
   /**
-   * Get MTF margin info for a specific stock
+   * Get MTF margin info for a specific stock with retry mechanism
    */
   private async getMTFMarginInfo(userId: string, symbol: string, price: number, _quantity: number): Promise<any> {
-    try {
-      const accessToken = await this.getAccessToken(userId);
-      if (!accessToken) {
-        return null;
+    const maxRetries = 2;
+    let attempt = 1;
+
+    while (attempt <= maxRetries) {
+      try {
+        console.log(`🔄 Attempt ${attempt}/${maxRetries}: Getting MTF margin info for ${symbol}`);
+        
+        const accessToken = await this.getAccessToken(userId);
+        if (!accessToken) {
+          console.error(`❌ Failed to get access token for user ${userId} (attempt ${attempt})`);
+          if (attempt === maxRetries) return null;
+          attempt++;
+          continue;
+        }
+
+        const { data: credentials } = await this.supabase
+          .from('api_credentials')
+          .select('client_id, public_key_encrypted')
+          .eq('user_id', userId)
+          .single();
+
+        if (!credentials) {
+          console.error(`❌ No credentials found for user ${userId}`);
+          return null;
+        }
+
+        const publicKey = this.decrypt(credentials.public_key_encrypted);
+        const clientId = credentials.client_id;
+
+        // Get margin info from Lemon API
+        const marginPayload = {
+          symbol,
+          exchange: 'NSE',
+          transactionType: 'BUY',
+          price: price.toString(),
+          quantity: '1', // Get margin for 1 share, we'll multiply later
+          productType: 'MARGIN'  // Use MARGIN for margin-info API (MTF not supported here)
+        };
+
+        console.log(`📤 Margin info request for ${symbol}: ${JSON.stringify(marginPayload)}`);
+
+        const response = await fetch(`${this.LEMON_BASE_URL}/api-trading/api/v2/margin-info`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': publicKey,
+            'x-auth-key': accessToken,
+            'x-client-id': clientId
+          },
+          body: JSON.stringify(marginPayload)
+        });
+
+        const result = await response.json();
+
+        if (result.status === 'success') {
+          console.log(`✅ MTF Margin info for ${symbol}:`, result.data);
+          return result.data;
+        } else {
+          console.error(`❌ Failed to get margin info for ${symbol} (attempt ${attempt}):`, result);
+          
+          // Check if it's a token-related error that we can retry
+          if (attempt < maxRetries && 
+              (result.error_code === 'AUTHENTICATION_ERROR' || 
+               (result.msg && result.msg.includes('Access token validation failed')))) {
+            
+            console.log(`🔄 Token error detected, forcing token refresh and retrying...`);
+            
+            // Force refresh the access token
+            try {
+              await this.forceRefreshAccessToken(userId);
+              console.log(`✅ Token refreshed successfully, retrying margin info...`);
+            } catch (refreshError) {
+              console.error(`❌ Failed to refresh token:`, refreshError);
+              return null;
+            }
+            
+            attempt++;
+            continue; // Retry with fresh token
+          }
+          
+          // Non-retryable error or max retries reached
+          return null;
+        }
+
+      } catch (error) {
+        console.error(`Error getting MTF margin info for ${symbol} (attempt ${attempt}):`, error);
+        if (attempt === maxRetries) return null;
+        attempt++;
+        continue;
       }
-
-      const { data: credentials } = await this.supabase
-        .from('api_credentials')
-        .select('client_id, public_key_encrypted')
-        .eq('user_id', userId)
-        .single();
-
-      if (!credentials) {
-        return null;
-      }
-
-      const publicKey = this.decrypt(credentials.public_key_encrypted);
-      const clientId = credentials.client_id;
-
-      // Get margin info from Lemon API
-      const marginPayload = {
-        symbol,
-        exchange: 'NSE',
-        transactionType: 'BUY',
-        price: price.toString(),
-        quantity: '1', // Get margin for 1 share, we'll multiply later
-        productType: 'MARGIN'  // Use MARGIN for margin-info API (MTF not supported here)
-      };
-
-      const response = await fetch(`${this.LEMON_BASE_URL}/api-trading/api/v2/margin-info`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': publicKey,
-          'x-auth-key': accessToken,
-          'x-client-id': clientId
-        },
-        body: JSON.stringify(marginPayload)
-      });
-
-      const result = await response.json();
-
-      if (result.status === 'success') {
-        console.log(`📊 MTF Margin info for ${symbol}:`, result.data);
-        return result.data;
-      } else {
-        console.error(`Failed to get margin info for ${symbol}:`, result);
-        return null;
-      }
-
-    } catch (error) {
-      console.error(`Error getting MTF margin info for ${symbol}:`, error);
-      return null;
     }
+
+    return null; // Should never reach here, but just in case
   }
 
   /**
