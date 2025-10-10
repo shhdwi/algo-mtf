@@ -57,29 +57,43 @@ async function executeRealTradingSignals(entrySignals: any[], sendWhatsApp: bool
     const userOrderResults: any[] = [];
     const whatsappService = new WhatsAppService();
 
-    // Process each eligible user
+    // Initialize results tracking for each user
+    const userResultsMap = new Map<string, {
+      user_id: string;
+      orders_placed: number;
+      orders_failed: number;
+      signals_processed: number;
+      orders: any[];
+    }>();
+    
     for (const userId of eligibleUsers) {
-      console.log(`📈 Processing real trading for user: ${userId}`);
-      
-      const userResults = {
+      userResultsMap.set(userId, {
         user_id: userId,
         orders_placed: 0,
         orders_failed: 0,
         signals_processed: 0,
-        orders: [] as any[]
-      };
+        orders: []
+      });
+    }
 
-      // Process each entry signal for this user
-      for (const signal of entrySignals) {
+    // Process each signal - place orders for ALL users in parallel
+    for (const signal of entrySignals) {
+      console.log(`\n🎯 Processing signal for ${signal.symbol} - Placing orders for ${eligibleUsers.length} users in parallel...`);
+      
+      // Create parallel order placement tasks for all eligible users
+      const orderPromises = eligibleUsers.map(async (userId) => {
+        const userResults = userResultsMap.get(userId)!;
         userResults.signals_processed++;
 
         try {
+          console.log(`  📈 User ${userId}: Checking eligibility for ${signal.symbol}...`);
+          
           // Check if user can place new orders
           const eligibilityCheck = await lemonService.canPlaceNewOrder(userId);
           if (!eligibilityCheck.canTrade) {
-            console.log(`⚠️ User ${userId} cannot trade: ${eligibilityCheck.reason}`);
+            console.log(`  ⚠️ User ${userId}: Cannot trade - ${eligibilityCheck.reason}`);
             userResults.orders_failed++;
-            continue;
+            return; // Skip this user for this signal
           }
 
           // Check if user already has an active position for this symbol
@@ -92,9 +106,9 @@ async function executeRealTradingSignals(entrySignals: any[], sendWhatsApp: bool
             .single();
 
           if (existingUserPosition) {
-            console.log(`⚠️ User ${userId} already has active position for ${signal.symbol}, skipping`);
+            console.log(`  ⚠️ User ${userId}: Already has active position for ${signal.symbol}, skipping`);
             userResults.orders_failed++;
-            continue;
+            return; // Skip this user for this signal
           }
 
           // Get the algorithm position ID for linking
@@ -108,16 +122,15 @@ async function executeRealTradingSignals(entrySignals: any[], sendWhatsApp: bool
           // Calculate position size based on MTF margin for this stock
           const positionSize = await lemonService.calculatePositionSize(userId, signal.symbol, signal.current_price);
           if (!positionSize || positionSize.quantity === 0) {
-            console.log(`⚠️ Cannot calculate position size for ${signal.symbol} - price too high for allocation`);
+            console.log(`  ⚠️ User ${userId}: Cannot calculate position size for ${signal.symbol} - price too high for allocation`);
             userResults.orders_failed++;
-            continue;
+            return; // Skip this user for this signal
           }
 
-          console.log(`💰 MTF Position size for ${signal.symbol}: ${positionSize.quantity} shares (₹${positionSize.amount.toFixed(2)}) | Margin: ₹${positionSize.marginRequired.toFixed(2)} | Leverage: ${positionSize.leverage.toFixed(2)}x`);
+          console.log(`  💰 User ${userId}: Position size for ${signal.symbol}: ${positionSize.quantity} shares (₹${positionSize.amount.toFixed(2)}) | Margin: ₹${positionSize.marginRequired.toFixed(2)} | Leverage: ${positionSize.leverage.toFixed(2)}x`);
 
           // Place real MTF order via Lemon API
-          console.log(`🔥 ATTEMPTING REAL BUY ORDER: ${signal.symbol} for user ${userId}`);
-          console.log(`🔥 Order details: ${positionSize.quantity} shares at ₹${signal.current_price}`);
+          console.log(`  🔥 User ${userId}: PLACING BUY ORDER for ${signal.symbol} - ${positionSize.quantity} shares at ₹${signal.current_price}`);
           
           const orderResult = await lemonService.placeOrder(userId, {
             symbol: signal.symbol,
@@ -128,14 +141,9 @@ async function executeRealTradingSignals(entrySignals: any[], sendWhatsApp: bool
             scanner_signal_id: signal.symbol
           });
           
-          console.log(`🔥 ORDER RESULT for ${signal.symbol}:`, orderResult);
-          
           // Log market status information
-          if (orderResult.market_status) {
-            console.log(`📊 Order market status: ${orderResult.market_status}`);
-            if (orderResult.is_amo) {
-              console.log(`🌙 BUY order placed as AMO - will execute at: ${orderResult.execution_time}`);
-            }
+          if (orderResult.market_status && orderResult.is_amo) {
+            console.log(`  🌙 User ${userId}: ${signal.symbol} order placed as AMO - will execute at ${orderResult.execution_time}`);
           }
 
           if (orderResult.success) {
@@ -187,18 +195,13 @@ async function executeRealTradingSignals(entrySignals: any[], sendWhatsApp: bool
                   });
 
                 if (positionError) {
-                  console.error(`❌ Failed to create user position for ${signal.symbol}:`, positionError);
-                  console.error(`❌ Position error details:`, positionError);
+                  console.error(`  ❌ User ${userId}: Failed to create position for ${signal.symbol}:`, positionError);
                 } else {
-                  console.log(`✅ User position created: ${signal.symbol} for user ${userId}`);
-                  console.log(`✅ Position details: ${positionSize.quantity} shares, ₹${positionSize.amount} value`);
-                  if (orderResult.is_amo) {
-                    console.log(`🌙 Position status: PENDING_AMO - will activate when AMO executes`);
-                  }
+                  console.log(`  ✅ User ${userId}: Position created for ${signal.symbol} - ${positionSize.quantity} shares (₹${positionSize.amount.toFixed(0)})${orderResult.is_amo ? ' [AMO-PENDING]' : ''}`);
                 }
 
               } catch (positionCreationError) {
-                console.error(`Error creating user position for ${signal.symbol}:`, positionCreationError);
+                console.error(`  ❌ User ${userId}: Error creating position for ${signal.symbol}:`, positionCreationError);
               }
             }
             
@@ -214,8 +217,6 @@ async function executeRealTradingSignals(entrySignals: any[], sendWhatsApp: bool
               execution_time: orderResult.execution_time
             });
 
-            console.log(`✅ Real order placed: ${signal.symbol} for user ${userId}`);
-
           } else {
             userResults.orders_failed++;
             totalOrdersFailed++;
@@ -227,16 +228,27 @@ async function executeRealTradingSignals(entrySignals: any[], sendWhatsApp: bool
               status: 'failed'
             });
 
-            console.log(`❌ Real order failed: ${signal.symbol} for user ${userId} - ${orderResult.error}`);
+            console.log(`  ❌ User ${userId}: Order FAILED for ${signal.symbol} - ${orderResult.error}`);
           }
 
         } catch (error) {
-          console.error(`Error processing signal ${signal.symbol} for user ${userId}:`, error);
+          console.error(`  ❌ User ${userId}: Error processing ${signal.symbol}:`, error);
           userResults.orders_failed++;
           totalOrdersFailed++;
         }
-      }
+      });
 
+      // Execute all user orders for this signal in parallel
+      console.log(`⚡ Executing ${orderPromises.length} parallel order placements for ${signal.symbol}...`);
+      const startTime = Date.now();
+      await Promise.all(orderPromises);
+      const endTime = Date.now();
+      console.log(`✅ Completed ${signal.symbol} orders in ${endTime - startTime}ms (parallel execution)`);
+    }
+
+    // After all signals processed, compile results and send WhatsApp notifications
+    for (const userId of eligibleUsers) {
+      const userResults = userResultsMap.get(userId)!;
       userOrderResults.push(userResults);
 
       // Send WhatsApp notification to user about their orders

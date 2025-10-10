@@ -138,7 +138,7 @@ class CombinedTradingService {
       const requestPayload = {
         symbol: symbol.toUpperCase(),
         exchange: normalizeExchange(exchange),
-        interval: '5m',
+        interval: '1m',
         start_time: marketOpenIST,
         end_time: marketCloseIST
       };

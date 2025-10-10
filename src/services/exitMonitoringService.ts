@@ -214,26 +214,45 @@ class ExitMonitoringService {
     const currentRSI = rsiValues[rsiValues.length - 1] || 50;
     const currentRSISMA = rsiSmaValues[rsiSmaValues.length - 1] || 50;
 
-    // Priority 1: Check RSI Reversal (highest priority)
+    // Priority 1: Check RSI Reversal (only during specific time windows to avoid volatility)
     if (currentRSI < currentRSISMA) {
-      return {
-        symbol: position.symbol,
-        status: 'EXIT',
-        currentPrice,
-        pnlAmount,
-        pnlPercentage,
-        exitSignal: {
-          position,
-          exitType: 'RSI_REVERSAL',
-          exitReason: 'Exit due to trend reversal: RSI crossed down RSI 14 SMA',
+      // Get current IST time to check if we're in RSI exit windows
+      const now = new Date();
+      const istTime = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+      const hour = istTime.getHours();
+      const minute = istTime.getMinutes();
+      
+      // RSI exits only allowed during:
+      // Window 1: 11:00-11:10 AM IST (hour 11, minutes 0-10)
+      // Window 2: 2:00-2:10 PM IST (hour 14, minutes 0-10)
+      const isWindow1 = (hour === 11 && minute >= 0 && minute <= 10);
+      const isWindow2 = (hour === 14 && minute >= 0 && minute <= 10);
+      const isInRSIExitWindow = isWindow1 || isWindow2;
+      
+      if (isInRSIExitWindow) {
+        console.log(`✅ RSI reversal detected during exit window (${hour}:${minute.toString().padStart(2, '0')} IST) - Allowing exit`);
+        return {
+          symbol: position.symbol,
+          status: 'EXIT',
           currentPrice,
-          exitPrice: currentPrice,
           pnlAmount,
           pnlPercentage,
-          rsiCurrent: currentRSI,
-          rsiSma: currentRSISMA
-        }
-      };
+          exitSignal: {
+            position,
+            exitType: 'RSI_REVERSAL',
+            exitReason: 'Exit due to trend reversal: RSI crossed down RSI 14 SMA',
+            currentPrice,
+            exitPrice: currentPrice,
+            pnlAmount,
+            pnlPercentage,
+            rsiCurrent: currentRSI,
+            rsiSma: currentRSISMA
+          }
+        };
+      } else {
+        console.log(`⏸️ RSI reversal detected but outside exit windows (${hour}:${minute.toString().padStart(2, '0')} IST) - Skipping RSI exit, will check stop loss and trailing stops`);
+        // Fall through to check stop loss and trailing stops
+      }
     }
 
     // Priority 2: Check Stop Loss (user-defined percentage or default 2.5%)
