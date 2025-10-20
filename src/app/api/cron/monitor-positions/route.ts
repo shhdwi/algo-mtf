@@ -254,32 +254,51 @@ async function monitorRealTradingExits(sendWhatsApp: boolean = true) {
 
     console.log(`✅ Real trading exit monitoring completed: ${totalExitsExecuted} exits executed, ${totalExitsFailed} failed`);
 
-    // Alert on high failure rate
+    // Alert on high failure rate (only during market hours)
     const totalPositions = realPositions?.length || 0;
     if (totalPositions > 0 && totalExitsFailed > totalExitsExecuted && totalExitsFailed > 2) {
-      console.log(`🚨 HIGH FAILURE RATE ALERT: ${totalExitsFailed} failures vs ${totalExitsExecuted} successes out of ${totalPositions} positions`);
+      // Check if we're within market hours before sending alert
+      const now = new Date();
+      const istTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+      const currentDay = istTime.getDay(); // 0 = Sunday, 1 = Monday, ..., 5 = Friday, 6 = Saturday
+      const currentHour = istTime.getHours();
+      const currentMinute = istTime.getMinutes();
+      const currentTimeInMinutes = currentHour * 60 + currentMinute;
       
-      // Send alert to eligible users about system issues
-      try {
-        const { data: eligibleUsers } = await supabase
-          .from('trading_preferences')
-          .select('user_id, users!inner(full_name, phone_number)')
-          .eq('is_real_trading_enabled', true)
-          .eq('users.is_active', true);
+      const marketOpenMinutes = 9 * 60 + 30; // 9:30 AM
+      const marketCloseMinutes = 15 * 60 + 30; // 3:30 PM
+      const isWeekday = currentDay >= 1 && currentDay <= 5; // Monday to Friday
+      const isMarketHours = currentTimeInMinutes >= marketOpenMinutes && currentTimeInMinutes <= marketCloseMinutes;
+      
+      if (isWeekday && isMarketHours) {
+        console.log(`🚨 HIGH FAILURE RATE ALERT: ${totalExitsFailed} failures vs ${totalExitsExecuted} successes out of ${totalPositions} positions`);
+        
+        // Send alert only to Shrish Dwivedi
+        try {
+          const { data: shrish } = await supabase
+            .from('users')
+            .select('full_name, phone_number')
+            .eq('full_name', 'Shrish Dwivedi')
+            .eq('is_active', true)
+            .single();
 
-        if (eligibleUsers?.length) {
-          for (const user of eligibleUsers) {
+          if (shrish) {
             await whatsappService.sendMessage({
-              phoneNumber: (user as any).users.phone_number,
-              message1: `Hi ${(user as any).users.full_name}! System Alert 🚨`,
+              phoneNumber: shrish.phone_number,
+              message1: `Hi ${shrish.full_name}! System Alert 🚨`,
               message2: `High failure rate in exit monitoring detected`,
               message3: `${totalExitsFailed} exits failed vs ${totalExitsExecuted} successful`,
               message4: `Please monitor your positions manually | ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} IST`
             });
+            console.log(`📱 Alert sent to Shrish Dwivedi`);
+          } else {
+            console.log(`⚠️ Shrish Dwivedi not found in database`);
           }
+        } catch (alertError) {
+          console.error('Failed to send high failure rate alert:', alertError);
         }
-      } catch (alertError) {
-        console.error('Failed to send high failure rate alert:', alertError);
+      } else {
+        console.log(`⏰ High failure rate detected but outside market hours (${istTime.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })} IST) - alert suppressed`);
       }
     }
 
