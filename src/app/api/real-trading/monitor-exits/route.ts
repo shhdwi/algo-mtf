@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import LemonTradingService from '@/services/lemonTradingService';
 import ExitMonitoringService from '@/services/exitMonitoringService';
 import WhatsAppService from '@/services/whatsappService';
+import PositionManagerService from '@/services/positionManagerService';
 import { createClient } from '@supabase/supabase-js';
 
 export async function POST(request: NextRequest) {
@@ -12,6 +13,7 @@ export async function POST(request: NextRequest) {
     
     const lemonService = new LemonTradingService();
     const whatsappService = new WhatsAppService();
+    const positionManager = new PositionManagerService();
     const supabase = createClient(
       process.env.SUPABASE_URL || 'https://yvvqgxqxmsccswmuwvdj.supabase.co',
       process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl2dnFneHF4bXNjY3N3bXV3dmRqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc0MTgyNjIsImV4cCI6MjA3Mjk5NDI2Mn0.T9-4zMdNu5WoO4QG7TttDULjaDQybl2ZVkS8xvIullI'
@@ -128,17 +130,14 @@ export async function POST(request: NextRequest) {
             console.log(`❌ Real exit order failed: ${position.symbol} for user ${position.user_id} - ${exitOrderResult.error}`);
           }
         } else {
-          // No exit condition, just update trailing levels
-          if (exitAnalysis.trailingStopLevel !== undefined && exitAnalysis.trailingStopLevel > position.trailing_level) {
-            await supabase
-              .from('real_positions')
-              .update({
-                trailing_level: exitAnalysis.trailingStopLevel,
-                updated_at: new Date().toISOString()
-              })
-              .eq('id', position.id);
-
-            console.log(`📈 Updated real trailing level: ${position.symbol} → Level ${exitAnalysis.trailingStopLevel}`);
+          // No exit condition, just update trailing levels (with HIGH-WATER MARK protection)
+          if (exitAnalysis.trailingStopLevel !== undefined) {
+            // Use positionManager to ensure high-water mark protection
+            await positionManager.updateRealTrailingLevel(
+              position.id,
+              position.symbol,
+              exitAnalysis.trailingStopLevel
+            );
           }
         }
 

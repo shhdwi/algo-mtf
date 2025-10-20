@@ -194,20 +194,20 @@ class PositionManagerService {
   }
 
   /**
-   * Update position trailing level
+   * Update position trailing level for algorithm positions
    */
   async updateTrailingLevel(symbol: string, newLevel: number): Promise<boolean> {
     try {
       // Get current trailing level to check if it changed
       const { data: position, error: fetchError } = await this.supabase
-        .from('positions')
+        .from('algorithm_positions')
         .select('trailing_level')
         .eq('symbol', symbol)
         .eq('status', 'ACTIVE')
         .single();
 
       if (fetchError || !position) {
-        console.error(`Position not found for ${symbol}`);
+        console.error(`Algorithm position not found for ${symbol}`);
         return false;
       }
 
@@ -216,7 +216,7 @@ class PositionManagerService {
       // Only update if level actually INCREASED (high-water mark)
       if (newLevel > currentLevel) {
         const { error } = await this.supabase
-          .from('positions')
+          .from('algorithm_positions')
           .update({
             trailing_level: newLevel,
             updated_at: new Date().toISOString()
@@ -226,16 +226,110 @@ class PositionManagerService {
 
         if (error) throw new Error(error.message);
         
-        console.log(`📈 Updated trailing level for ${symbol}: ${currentLevel} → ${newLevel} (HIGH-WATER MARK)`);
+        console.log(`📈 Updated algorithm trailing level for ${symbol}: ${currentLevel} → ${newLevel} (HIGH-WATER MARK)`);
         return true; // Level increased
       } else if (newLevel < currentLevel) {
-        console.log(`🔒 Trailing level protected for ${symbol}: keeping ${currentLevel} (was ${newLevel})`);
+        console.log(`🔒 Algorithm trailing level protected for ${symbol}: keeping ${currentLevel} (rejected ${newLevel})`);
         return false; // Level protected from going down
       }
       
       return false; // Level didn't change
     } catch (error) {
-      console.error(`Error updating trailing level for ${symbol}:`, error);
+      console.error(`Error updating algorithm trailing level for ${symbol}:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Update user position trailing level
+   */
+  async updateUserTrailingLevel(positionId: string, symbol: string, newLevel: number): Promise<boolean> {
+    try {
+      // Get current trailing level from database (fresh query for high-water mark)
+      const { data: position, error: fetchError } = await this.supabase
+        .from('user_positions')
+        .select('trailing_level, user_id')
+        .eq('id', positionId)
+        .eq('status', 'ACTIVE')
+        .single();
+
+      if (fetchError || !position) {
+        console.error(`User position not found: ${positionId} (${symbol})`);
+        return false;
+      }
+
+      const currentLevel = position.trailing_level || 0;
+      
+      // Only update if level actually INCREASED (high-water mark)
+      if (newLevel > currentLevel) {
+        const { error } = await this.supabase
+          .from('user_positions')
+          .update({
+            trailing_level: newLevel,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', positionId)
+          .eq('status', 'ACTIVE');
+
+        if (error) throw new Error(error.message);
+        
+        console.log(`📈 Updated user trailing level for ${symbol} (user ${position.user_id}): ${currentLevel} → ${newLevel} (HIGH-WATER MARK)`);
+        return true; // Level increased
+      } else if (newLevel < currentLevel) {
+        console.log(`🔒 User trailing level protected for ${symbol} (user ${position.user_id}): keeping ${currentLevel} (rejected ${newLevel})`);
+        return false; // Level protected from going down
+      }
+      
+      return false; // Level didn't change
+    } catch (error) {
+      console.error(`Error updating user trailing level for ${symbol}:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Update real position trailing level (for real_positions table)
+   */
+  async updateRealTrailingLevel(positionId: string, symbol: string, newLevel: number): Promise<boolean> {
+    try {
+      // Get current trailing level from database (fresh query for high-water mark)
+      const { data: position, error: fetchError } = await this.supabase
+        .from('real_positions')
+        .select('trailing_level, user_id')
+        .eq('id', positionId)
+        .eq('status', 'ACTIVE')
+        .single();
+
+      if (fetchError || !position) {
+        console.error(`Real position not found: ${positionId} (${symbol})`);
+        return false;
+      }
+
+      const currentLevel = position.trailing_level || 0;
+      
+      // Only update if level actually INCREASED (high-water mark)
+      if (newLevel > currentLevel) {
+        const { error } = await this.supabase
+          .from('real_positions')
+          .update({
+            trailing_level: newLevel,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', positionId)
+          .eq('status', 'ACTIVE');
+
+        if (error) throw new Error(error.message);
+        
+        console.log(`📈 Updated real trailing level for ${symbol} (user ${position.user_id}): ${currentLevel} → ${newLevel} (HIGH-WATER MARK)`);
+        return true; // Level increased
+      } else if (newLevel < currentLevel) {
+        console.log(`🔒 Real trailing level protected for ${symbol} (user ${position.user_id}): keeping ${currentLevel} (rejected ${newLevel})`);
+        return false; // Level protected from going down
+      }
+      
+      return false; // Level didn't change
+    } catch (error) {
+      console.error(`Error updating real trailing level for ${symbol}:`, error);
       return false;
     }
   }
