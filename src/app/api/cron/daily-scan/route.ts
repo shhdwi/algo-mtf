@@ -343,12 +343,12 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Check if it's within reasonable time (around 3:15 PM IST) - bypass for testing
+    // Check if it's within reasonable time (around 2:15 PM IST) - bypass for testing
     const hour = istTime.getHours();
     const minute = istTime.getMinutes();
     const isTestAuth = authHeader === testAuth;
     
-    if (!isTestAuth && (hour !== 15 || minute < 10 || minute > 20)) {
+    if (!isTestAuth && (hour !== 14 || minute < 10 || minute > 20)) {
       return NextResponse.json({ 
         success: false, 
         message: `Skipped: Not market close time (${hour}:${minute.toString().padStart(2, '0')} IST)`,
@@ -360,7 +360,7 @@ export async function GET(request: NextRequest) {
       console.log('🧪 Running daily scan in TEST MODE - bypassing time restrictions');
     }
 
-    console.log('🕒 Cron: Starting daily scan at 3:15 PM IST...');
+    console.log('🕒 Cron: Starting daily scan at 2:15 PM IST...');
     
     // Execute algorithm scan (source of truth) - now uses algorithm_positions table
     const scanner = new UltimateScannerService();

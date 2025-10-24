@@ -718,9 +718,9 @@ class LemonTradingService {
         return { canTrade: false, reason: 'Real trading not enabled' };
       }
 
-      // Check concurrent positions limit
+      // Check concurrent positions limit (using user_positions table - the actual positions table)
       const { count: activePositions } = await this.supabase
-        .from('real_positions')
+        .from('user_positions')
         .select('*', { count: 'exact', head: true })
         .eq('user_id', userId)
         .eq('status', 'ACTIVE');
