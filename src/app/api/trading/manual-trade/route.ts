@@ -3,19 +3,41 @@ import LemonTradingService from '@/services/lemonTradingService';
 import { createClient } from '@supabase/supabase-js';
 
 /**
- * Manual Trading API - Place BUY/SELL orders for any user
- * This endpoint allows you to manually execute trades for accounts in the database
+ * Manual Trading API - Execute BUY/SELL orders (Equity & Options)
+ * No position management, no database updates - just execute trades
  * 
  * @route POST /api/trading/manual-trade
+ * 
+ * EQUITY ORDERS:
  * @body {
  *   user_id: string (UUID of user in database),
  *   symbol: string (stock symbol, e.g. "RELIANCE"),
  *   transaction_type: "BUY" | "SELL",
- *   quantity?: number (optional for BUY - auto-calculated, required for SELL),
- *   price?: number (optional - defaults to LTP),
- *   order_reason?: string (optional - reason for the trade),
- *   exchange?: string (optional - defaults to NSE),
- *   calculate_position_size?: boolean (optional - auto-calculate quantity for BUY orders)
+ *   quantity: number (REQUIRED - number of shares to buy/sell),
+ *   price?: number (optional - for limit orders, omit for market orders),
+ *   order_type?: "MARKET" | "LIMIT" | "STOP_LOSS" | "STOP_LOSS_MARKET",
+ *   product_type?: "DELIVERY" | "INTRADAY" | "MARGIN" | "MTF",
+ *   exchange?: "NSE" | "BSE" (default: NSE),
+ *   amo?: boolean (After Market Order - default: false),
+ *   order_reason?: string (optional - reason for the trade)
+ * }
+ * 
+ * OPTIONS ORDERS:
+ * @body {
+ *   user_id: string,
+ *   symbol: string (e.g. "NIFTY", "BANKNIFTY"),
+ *   transaction_type: "BUY" | "SELL",
+ *   quantity: number,
+ *   contract_type: "OPT" | "FUT",
+ *   expiry: string (dd-mm-yyyy format, e.g. "31-07-2025"),
+ *   strike_price?: string (required for options, e.g. "25100"),
+ *   option_type?: "CE" | "PE" (required for options),
+ *   price?: number (optional),
+ *   order_type?: "MARKET" | "LIMIT",
+ *   product_type?: "DELIVERY" | "INTRADAY",
+ *   exchange?: "NFO" | "BFO" (default: NFO),
+ *   amo?: boolean (After Market Order - default: false),
+ *   order_reason?: string
  * }
  */
 export async function POST(request: NextRequest) {
@@ -27,10 +49,22 @@ export async function POST(request: NextRequest) {
       transaction_type,
       quantity,
       price,
+      order_type = 'MARKET',
+      product_type = 'DELIVERY',
+      contract_type,
+      expiry,
+      strike_price,
+      option_type,
+      amo = false,
       order_reason = 'MANUAL_TRADE',
-      exchange = 'NSE',
-      calculate_position_size = true
+      exchange
     } = body;
+
+    // Determine if this is a derivative order
+    const isDerivative = !!contract_type;
+    const defaultExchange = isDerivative ? 'NFO' : 'NSE';
+    const finalExchange = exchange || defaultExchange;
+    const isAMO = amo === true;
 
     console.log('🔄 Manual Trade Request:', {
       user_id,
@@ -38,8 +72,16 @@ export async function POST(request: NextRequest) {
       transaction_type,
       quantity,
       price,
+      order_type,
+      product_type,
+      contract_type,
+      expiry,
+      strike_price,
+      option_type,
+      exchange: finalExchange,
+      amo: isAMO,
       order_reason,
-      exchange
+      is_derivative: isDerivative
     });
 
     // Validate required fields
@@ -61,6 +103,100 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: false,
         error: 'transaction_type must be either BUY or SELL'
+      }, { status: 400 });
+    }
+
+    if (!quantity || quantity <= 0) {
+      return NextResponse.json({
+        success: false,
+        error: 'quantity is required and must be greater than 0'
+      }, { status: 400 });
+    }
+
+    // Validate derivative-specific fields
+    if (isDerivative) {
+      // For NFO/BFO segments: contractType and expiry are required
+      if (!expiry) {
+        return NextResponse.json({
+          success: false,
+          error: 'expiry is required for derivatives (format: dd-mm-yyyy, e.g. "31-07-2025")'
+        }, { status: 400 });
+      }
+
+      // Validate expiry format (dd-mm-yyyy)
+      const expiryRegex = /^\d{2}-\d{2}-\d{4}$/;
+      if (!expiryRegex.test(expiry)) {
+        return NextResponse.json({
+          success: false,
+          error: 'expiry must be in dd-mm-yyyy format (e.g. "31-07-2025")'
+        }, { status: 400 });
+      }
+
+      // Validate contract type
+      if (!['FUT', 'OPT'].includes(contract_type)) {
+        return NextResponse.json({
+          success: false,
+          error: 'contract_type must be either FUT or OPT for derivatives'
+        }, { status: 400 });
+      }
+
+      // For options: strikePrice and optionType are required
+      if (contract_type === 'OPT') {
+        if (!strike_price) {
+          return NextResponse.json({
+            success: false,
+            error: 'strike_price is required for options contracts'
+          }, { status: 400 });
+        }
+
+        if (!option_type || !['CE', 'PE'].includes(option_type)) {
+          return NextResponse.json({
+            success: false,
+            error: 'option_type must be either CE or PE for options'
+          }, { status: 400 });
+        }
+      }
+
+      // Validate exchange for derivatives
+      if (!['NFO', 'BFO'].includes(finalExchange)) {
+        return NextResponse.json({
+          success: false,
+          error: 'exchange must be NFO or BFO for derivatives'
+        }, { status: 400 });
+      }
+    } else {
+      // Validate exchange for equity
+      if (!['NSE', 'BSE'].includes(finalExchange)) {
+        return NextResponse.json({
+          success: false,
+          error: 'exchange must be NSE or BSE for equity'
+        }, { status: 400 });
+      }
+    }
+
+    // Validate order_type
+    const validOrderTypes = ['MARKET', 'LIMIT', 'STOP_LOSS', 'STOP_LOSS_MARKET'];
+    if (!validOrderTypes.includes(order_type)) {
+      return NextResponse.json({
+        success: false,
+        error: `order_type must be one of: ${validOrderTypes.join(', ')}`
+      }, { status: 400 });
+    }
+
+    // Validate product_type
+    const validProductTypes = ['DELIVERY', 'INTRADAY', 'MARGIN', 'MTF'];
+    if (!validProductTypes.includes(product_type)) {
+      return NextResponse.json({
+        success: false,
+        error: `product_type must be one of: ${validProductTypes.join(', ')}`
+      }, { status: 400 });
+    }
+
+    // For LIMIT orders, price is required
+    if (order_type === 'LIMIT' && !price) {
+      return NextResponse.json({
+        success: false,
+        error: 'price is required for LIMIT orders'
       }, { status: 400 });
     }
 
@@ -116,225 +252,165 @@ export async function POST(request: NextRequest) {
 
     console.log(`✅ User verified: ${user.full_name} (${user.email}) - Client ID: ${credentials.client_id}`);
 
-    // Get stock price if not provided
+    // Get stock price if not provided (for display purposes for MARKET orders)
     let stockPrice = price;
-    if (!stockPrice) {
+    if (!stockPrice && order_type !== 'LIMIT') {
       console.log(`📊 Fetching LTP for ${symbol}...`);
-      const ltpData = await lemonService.getLTP(symbol, exchange);
-      if (!ltpData || !ltpData.last_traded_price) {
-        return NextResponse.json({
-          success: false,
-          error: `Unable to fetch price for ${symbol}. Please provide price manually.`
-        }, { status: 400 });
+      const ltpData = await lemonService.getLTP(symbol, finalExchange);
+      if (ltpData && ltpData.last_traded_price) {
+        stockPrice = ltpData.last_traded_price;
+        console.log(`✅ Got LTP for ${symbol}: ₹${stockPrice}`);
+      } else {
+        stockPrice = 0; // Unknown price, will be market order
+        console.log(`⚠️ Could not fetch LTP for ${symbol}, proceeding with market order`);
       }
-      stockPrice = ltpData.last_traded_price;
-      console.log(`✅ Got LTP for ${symbol}: ₹${stockPrice}`);
     }
 
-    // Handle BUY orders
-    if (transaction_type === 'BUY') {
-      let orderQuantity = quantity;
-
-      // Auto-calculate position size if requested and quantity not provided
-      if (calculate_position_size && !orderQuantity) {
-        console.log(`📊 Auto-calculating position size for ${symbol}...`);
-        
-        const positionSize = await lemonService.calculatePositionSize(user_id, symbol, stockPrice);
-        
-        if (!positionSize || positionSize.quantity === 0) {
-          return NextResponse.json({
-            success: false,
-            error: `Unable to calculate position size for ${symbol}. Stock price may be too high for user's allocation.`,
-            hint: 'Provide quantity manually or adjust user trading preferences'
-          }, { status: 400 });
-        }
-
-        orderQuantity = positionSize.quantity;
-        
-        console.log(`💰 Position size calculated:`, {
-          quantity: orderQuantity,
-          total_amount: positionSize.amount,
-          margin_required: positionSize.marginRequired,
-          leverage: `${positionSize.leverage.toFixed(2)}x`
-        });
+    // Build order description
+    let orderDescription = `${transaction_type} ${quantity}`;
+    if (isDerivative) {
+      if (contract_type === 'OPT') {
+        orderDescription += ` ${symbol} ${expiry} ${strike_price} ${option_type}`;
+      } else {
+        orderDescription += ` ${symbol} ${expiry} FUT`;
       }
+    } else {
+      orderDescription += ` ${symbol}`;
+    }
+    if (stockPrice > 0) {
+      orderDescription += ` @ ₹${stockPrice}`;
+    }
 
-      // Validate quantity for BUY
-      if (!orderQuantity || orderQuantity <= 0) {
-        return NextResponse.json({
-          success: false,
-          error: 'quantity is required for BUY orders when calculate_position_size is false'
-        }, { status: 400 });
-      }
+    console.log(`📤 Placing ${order_type} order: ${orderDescription}${isAMO ? ' (AMO)' : ''}`);
+    
+    // Prepare order request payload according to Lemon API specification
+    const orderPayload: any = {
+      clientId: credentials.client_id,
+      transactionType: transaction_type,
+      exchangeSegment: finalExchange,
+      productType: product_type,
+      orderType: order_type,
+      validity: 'DAY',
+      symbol,
+      quantity: quantity.toString(),
+      tag: `${order_reason}_${Date.now()}`,
+      afterMarketOrder: isAMO
+    };
 
-      // Check if user can place new orders
-      const eligibilityCheck = await lemonService.canPlaceNewOrder(user_id);
-      if (!eligibilityCheck.canTrade) {
-        return NextResponse.json({
-          success: false,
-          error: `User cannot place BUY order: ${eligibilityCheck.reason}`
-        }, { status: 403 });
-      }
-
-      // Place BUY order
-      console.log(`🛒 Placing BUY order: ${symbol} x ${orderQuantity} @ ₹${stockPrice}`);
+    // Add derivative-specific fields
+    if (isDerivative) {
+      orderPayload.contractType = contract_type;
+      orderPayload.expiry = expiry;
       
-      const orderResult = await lemonService.placeOrder(user_id, {
-        symbol,
-        transaction_type: 'BUY',
-        quantity: orderQuantity,
-        price: stockPrice,
-        order_reason
+      if (contract_type === 'OPT') {
+        orderPayload.strikePrice = strike_price;
+        orderPayload.optionType = option_type;
+      }
+    }
+
+    // Add price for LIMIT orders
+    if (order_type === 'LIMIT' && stockPrice) {
+      orderPayload.price = stockPrice.toString();
+    }
+
+    console.log(`📤 Order payload:`, JSON.stringify(orderPayload, null, 2));
+
+    // Get access token and place order via Lemon API
+    const accessToken = await lemonService.getAccessToken(user_id);
+    if (!accessToken) {
+      return NextResponse.json({
+        success: false,
+        error: 'Failed to get access token'
+      }, { status: 500 });
+    }
+
+    const publicKey = lemonService['decrypt'](credentials.public_key_encrypted);
+
+    // Place order directly with Lemon API
+    const LEMON_BASE_URL = 'https://cs-prod.lemonn.co.in';
+    const response = await fetch(`${LEMON_BASE_URL}/api-trading/api/v2/orders`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': publicKey,
+        'x-auth-key': accessToken,
+        'x-client-id': credentials.client_id
+      },
+      body: JSON.stringify(orderPayload)
+    });
+
+    const orderResult = await response.json();
+
+    if (orderResult.status === 'success') {
+      const estimatedValue = stockPrice > 0 ? quantity * stockPrice : 'Market Price';
+      
+      // Save order to database for audit trail
+      await supabase
+        .from('real_orders')
+        .insert({
+          user_id,
+          lemon_order_id: orderResult.data.orderId,
+          symbol,
+          transaction_type,
+          order_type,
+          quantity,
+          price: stockPrice || 0,
+          order_status: orderResult.data.orderStatus,
+          order_reason,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        });
+
+      const responseData: any = {
+        user: {
+          id: user.id,
+          name: user.full_name,
+          email: user.email,
+          client_id: credentials.client_id
+        },
+        order: {
+          symbol,
+          transaction_type,
+          quantity,
+          price: stockPrice > 0 ? stockPrice : 'Market',
+          order_type,
+          product_type,
+          exchange: finalExchange,
+          order_id: orderResult.data.orderId,
+          order_status: orderResult.data.orderStatus,
+          is_amo: isAMO
+        },
+        estimated_value: estimatedValue
+      };
+
+      // Add derivative info to response
+      if (isDerivative) {
+        responseData.order.contract_type = contract_type;
+        responseData.order.expiry = expiry;
+        if (contract_type === 'OPT') {
+          responseData.order.strike_price = strike_price;
+          responseData.order.option_type = option_type;
+        }
+      }
+
+      console.log(`✅ Order placed successfully: ${orderResult.data.orderId}${isAMO ? ' (AMO - will execute at market open)' : ' (Regular order)'}`);
+      
+      return NextResponse.json({
+        success: true,
+        message: `${transaction_type} order placed successfully`,
+        data: responseData,
+        lemon_response: orderResult,
+        timestamp: new Date().toISOString()
       });
-
-      if (orderResult.success) {
-        // Create position in database
-        if (orderResult.order_id) {
-          // Note: createRealPosition expects the order to already be in real_orders table
-          // The placeOrder method already saves it, so we just need to create the position link
-          
-          await supabase
-            .from('user_positions')
-            .insert({
-              user_id,
-              symbol,
-              entry_price: stockPrice,
-              entry_quantity: orderQuantity,
-              current_price: stockPrice,
-              status: 'ACTIVE',
-              entry_date: new Date().toISOString().split('T')[0],
-              entry_time: new Date().toISOString(),
-              pnl_amount: 0,
-              pnl_percentage: 0,
-              trailing_level: 0
-            });
-
-          console.log(`✅ Position created for ${symbol}`);
-        }
-
-        return NextResponse.json({
-          success: true,
-          message: 'BUY order placed successfully',
-          data: {
-            user: {
-              id: user.id,
-              name: user.full_name,
-              email: user.email,
-              client_id: credentials.client_id
-            },
-            order: {
-              symbol,
-              transaction_type: 'BUY',
-              quantity: orderQuantity,
-              price: stockPrice,
-              order_id: orderResult.order_id,
-              order_status: orderResult.order_status,
-              market_status: orderResult.market_status,
-              is_amo: orderResult.is_amo,
-              execution_time: orderResult.execution_time
-            },
-            estimated_cost: orderQuantity * stockPrice
-          },
-          lemon_response: orderResult.lemon_response,
-          timestamp: new Date().toISOString()
-        });
-      } else {
-        return NextResponse.json({
-          success: false,
-          error: `BUY order failed: ${orderResult.error}`,
-          lemon_response: orderResult.lemon_response
-        }, { status: 400 });
-      }
+    } else {
+      console.error(`❌ Order failed:`, orderResult);
+      return NextResponse.json({
+        success: false,
+        error: `${transaction_type} order failed: ${orderResult.message || orderResult.error_code || 'Unknown error'}`,
+        error_code: orderResult.error_code,
+        lemon_response: orderResult
+      }, { status: 400 });
     }
-
-    // Handle SELL orders
-    if (transaction_type === 'SELL') {
-      // For SELL, we need to know what position to close
-      // We can either sell a specific position or all positions for a symbol
-
-      if (!quantity) {
-        // If quantity not provided, get active position quantity
-        const { data: position, error: posError } = await supabase
-          .from('user_positions')
-          .select('entry_quantity, entry_price, current_price')
-          .eq('user_id', user_id)
-          .eq('symbol', symbol)
-          .eq('status', 'ACTIVE')
-          .single();
-
-        if (posError || !position) {
-          return NextResponse.json({
-            success: false,
-            error: `No active position found for ${symbol}. Cannot determine quantity to sell.`,
-            hint: 'Provide quantity manually if you want to short sell'
-          }, { status: 400 });
-        }
-
-        quantity = position.entry_quantity;
-        console.log(`📊 Found active position for ${symbol}: ${quantity} shares @ ₹${position.entry_price}`);
-      }
-
-      // Validate quantity for SELL
-      if (quantity <= 0) {
-        return NextResponse.json({
-          success: false,
-          error: 'quantity must be greater than 0 for SELL orders'
-        }, { status: 400 });
-      }
-
-      // Use the exit position method which handles everything
-      console.log(`📤 Placing SELL order: ${symbol} x ${quantity} @ ₹${stockPrice}`);
-      
-      const exitResult = await lemonService.exitRealPosition(user_id, symbol, order_reason);
-
-      if (exitResult.success) {
-        return NextResponse.json({
-          success: true,
-          message: 'SELL order placed successfully',
-          data: {
-            user: {
-              id: user.id,
-              name: user.full_name,
-              email: user.email,
-              client_id: credentials.client_id
-            },
-            order: {
-              symbol,
-              transaction_type: 'SELL',
-              quantity,
-              price: exitResult.actual_exit_price || stockPrice,
-              order_id: exitResult.order_id,
-              order_status: exitResult.order_status,
-              market_status: exitResult.market_status,
-              is_amo: exitResult.is_amo,
-              execution_time: exitResult.execution_time
-            },
-            pnl: {
-              amount: exitResult.actual_pnl_amount,
-              percentage: exitResult.actual_pnl_percentage
-            },
-            estimated_proceeds: quantity * stockPrice,
-            position_updated: exitResult.position_updated
-          },
-          lemon_response: exitResult.lemon_response,
-          timestamp: new Date().toISOString()
-        });
-      } else {
-        return NextResponse.json({
-          success: false,
-          error: `SELL order failed: ${exitResult.error}`,
-          lemon_response: exitResult.lemon_response,
-          order_placed: exitResult.order_placed,
-          requires_manual_intervention: exitResult.requires_manual_intervention
-        }, { status: 400 });
-      }
-    }
-
-    // Should never reach here
-    return NextResponse.json({
-      success: false,
-      error: 'Invalid transaction type'
-    }, { status: 400 });
 
   } catch (error) {
     console.error('❌ Manual trade error:', error);
