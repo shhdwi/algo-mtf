@@ -472,12 +472,13 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`✅ Order placed successfully: ${orderResult.data.orderId}${isAMO ? ' (AMO - will execute at market open)' : ' (Regular order)'}`);
+    console.log(`📋 Full Lemon API Response:`, JSON.stringify(orderResult, null, 2));
     
     return NextResponse.json({
       success: true,
       message: `${transaction_type} order placed successfully`,
       data: responseData,
-      lemon_response: orderResult,
+      lemon_response: orderResult, // Full Lemon API response included
       timestamp: new Date().toISOString()
     });
 
