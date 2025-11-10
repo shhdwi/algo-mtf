@@ -1,0 +1,71 @@
+Section,Metric,Value,Additional_Info
+Report Date,As of,October 29 2025,
+Algo Start Date,Started,September 22 2025,
+Trading Period,Days Active,37 days,
+
+USER PERFORMANCE SUMMARY,,,,
+User,Start Date,Starting Capital,Current Capital,P&L Amount,Return %
+Gaurav,2025-09-22,50000,55651,5651,11.30%
+Devam S,2025-09-22,50000,58834,8834,17.67%
+Brajesh,2025-09-22,100000,112118,12118,12.12%
+Ashish,2025-09-22,200000,228575,28575,14.29%
+Subham Agarwal,2025-09-26,50000,56285,6285,12.57%
+Shrish Dwivedi,2025-10-07,50000,59399,9399,18.80%
+Ansu Jain,2025-10-10,500000,555911,55911,11.18%
+TOTAL,,1000000,1126773,126773,12.68%
+
+WEEK-WISE PORTFOLIO VALUES (2-Week Periods),,,,,,
+
+User,Start Capital,Weeks 1-2 End (Oct 6),Change %,Weeks 3-4 End (Oct 20),Change %,Weeks 5-6 Current (Oct 29),Change %
+Gaurav,50000,48137,-3.73%,55637,+15.58%,55637,0.00%
+Devam S,50000,48139,-3.72%,57700,+19.87%,58830,+1.96%
+Brajesh,100000,96277,-3.72%,109917,+14.16%,112104,+1.99%
+Ashish,200000,192447,-3.78%,224252,+16.52%,228553,+1.92%
+Subham Agarwal,50000,48301,-3.40%,55206,+14.30%,56285,+1.95%
+Shrish Dwivedi,50000,50000,0.00%,58275,+16.55%,59394,+1.92%
+Ansu Jain,500000,500000,0.00%,545050,+9.01%,555709,+1.95%
+TOTAL,1000000,983301,-1.67%,1101867,+12.06%,1117118,+1.38%
+
+DETAILED USER STATISTICS,,,,
+User,Total Positions,Closed Positions,Wins,Losses,Open Positions,Win Rate,Avg Win %,Avg Loss %,Realized P&L,Unrealized P&L
+Gaurav,50,46,25,21,3,54.3%,1.58%,-1.63%,2744,2907
+Devam S,56,50,27,23,6,54.0%,1.60%,-1.46%,3971,4863
+Brajesh,58,52,26,26,6,50.0%,2.73%,-2.66%,486,11632
+Ashish,57,51,27,24,6,52.9%,5.96%,-6.05%,8506,20069
+Subham Agarwal,55,50,26,24,5,52.0%,2.16%,-2.18%,2213,4072
+Shrish Dwivedi,35,29,17,12,6,58.6%,3.05%,-3.01%,3672,5727
+Ansu Jain,34,29,19,10,5,65.5%,5.22%,-4.81%,26071,29841
+TOTAL,345,307,167,140,37,54.4%,3.19%,-3.11%,47663,79111
+
+WEEKLY TRADE BREAKDOWN (ALGO SIGNALS),,,,
+Period,Trades Opened,Closed,Wins,Losses,Open Carry Forward
+Weeks 1-2 (Sep 22-Oct 6),51,50,6,44,0
+Weeks 3-4 (Oct 7-20),240,226,146,80,14
+Weeks 5-6 (Oct 21-29),42,26,13,13,16
+TOTAL,333,302,165,137,30
+
+ALGO PERFORMANCE (ALL SIGNALS FROM SEP 22),,,,
+Metric,Value,Details
+Total Signals Generated,345,From Sep 22 2025
+Closed Positions,307,
+Open Positions,37,
+Profitable Closed,167,54.4% win rate
+Loss Closed,140,45.6%
+Average Win %,3.19%,
+Average Loss %,-3.11%,
+Risk-Reward Ratio,1.03:1,Positive ratio
+Closed Trades P&L,+15.52%,Sum of all closed
+Open Trades P&L,+26.39%,Sum of all open
+Net Cumulative Return,+41.91%,If all trades taken
+
+KEY METRICS,,,,
+Metric,Value
+Total Capital Deployed,"₹10,00,000"
+Current Portfolio Value,"₹11,26,773"
+Total Profit,"₹1,26,773"
+Average User Return,12.68%
+Days Trading,37 days
+Overall Win Rate,54.4%
+Average Open Position Profit,+2.14%
+
+
