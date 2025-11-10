@@ -130,7 +130,28 @@ export async function GET(request: NextRequest) {
           }
         });
 
-        orderDetails = await response.json();
+        // Get response text first for better error handling
+        const responseText = await response.text();
+        console.log(`📥 Lemon API Response (attempt ${attempt}):`, responseText);
+
+        // Try to parse JSON
+        try {
+          orderDetails = JSON.parse(responseText);
+        } catch (parseError) {
+          lastError = `Failed to parse Lemon API response: ${parseError instanceof Error ? parseError.message : 'Invalid JSON'}`;
+          console.error(`❌ JSON parse error on attempt ${attempt}:`, responseText.substring(0, 200));
+          
+          if (attempt < maxRetries) {
+            await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+            continue;
+          }
+          
+          return NextResponse.json({
+            success: false,
+            error: lastError,
+            raw_response: responseText.substring(0, 500)
+          }, { status: 500 });
+        }
 
         // Check for authentication errors
         const isAuthError = 
