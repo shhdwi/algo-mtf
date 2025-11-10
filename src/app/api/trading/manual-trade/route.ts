@@ -315,102 +315,171 @@ export async function POST(request: NextRequest) {
 
     console.log(`📤 Order payload:`, JSON.stringify(orderPayload, null, 2));
 
-    // Get access token and place order via Lemon API
-    const accessToken = await lemonService.getAccessToken(user_id);
-    if (!accessToken) {
-      return NextResponse.json({
-        success: false,
-        error: 'Failed to get access token'
-      }, { status: 500 });
-    }
-
     const publicKey = lemonService['decrypt'](credentials.public_key_encrypted);
-
-    // Place order directly with Lemon API
     const LEMON_BASE_URL = 'https://cs-prod.lemonn.co.in';
-    const response = await fetch(`${LEMON_BASE_URL}/api-trading/api/v2/orders`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': publicKey,
-        'x-auth-key': accessToken,
-        'x-client-id': credentials.client_id
-      },
-      body: JSON.stringify(orderPayload)
-    });
 
-    const orderResult = await response.json();
+    // Retry logic with automatic token refresh on authentication errors
+    const maxRetries = 3;
+    let orderResult: any = null;
+    let lastError = '';
 
-    if (orderResult.status === 'success') {
-      const estimatedValue = stockPrice > 0 ? quantity * stockPrice : 'Market Price';
-      
-      // Save order to database for audit trail
-      await supabase
-        .from('real_orders')
-        .insert({
-          user_id,
-          lemon_order_id: orderResult.data.orderId,
-          symbol,
-          transaction_type,
-          order_type,
-          quantity,
-          price: stockPrice || 0,
-          order_status: orderResult.data.orderStatus,
-          order_reason,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`🔄 Order attempt ${attempt}/${maxRetries}...`);
+
+        // Get access token (will auto-refresh if expired)
+        const accessToken = await lemonService.getAccessToken(user_id);
+        if (!accessToken) {
+          lastError = 'Failed to get access token';
+          console.error(`❌ Token generation failed on attempt ${attempt}`);
+          
+          if (attempt < maxRetries) {
+            // Wait before retry with exponential backoff
+            await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+            continue;
+          }
+          
+          return NextResponse.json({
+            success: false,
+            error: lastError
+          }, { status: 500 });
+        }
+
+        // Place order with Lemon API
+        const response = await fetch(`${LEMON_BASE_URL}/api-trading/api/v2/orders`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': publicKey,
+            'x-auth-key': accessToken,
+            'x-client-id': credentials.client_id
+          },
+          body: JSON.stringify(orderPayload)
         });
 
-      const responseData: any = {
-        user: {
-          id: user.id,
-          name: user.full_name,
-          email: user.email,
-          client_id: credentials.client_id
-        },
-        order: {
-          symbol,
-          transaction_type,
-          quantity,
-          price: stockPrice > 0 ? stockPrice : 'Market',
-          order_type,
-          product_type,
-          exchange: finalExchange,
-          order_id: orderResult.data.orderId,
-          order_status: orderResult.data.orderStatus,
-          is_amo: isAMO
-        },
-        estimated_value: estimatedValue
-      };
+        orderResult = await response.json();
 
-      // Add derivative info to response
-      if (isDerivative) {
-        responseData.order.contract_type = contract_type;
-        responseData.order.expiry = expiry;
-        if (contract_type === 'OPT') {
-          responseData.order.strike_price = strike_price;
-          responseData.order.option_type = option_type;
+        // Check for authentication errors
+        const isAuthError = 
+          orderResult.error_code === 'AUTHENTICATION_ERROR' ||
+          orderResult.error_code === 'INVALID_ACCESS_TOKEN' ||
+          (orderResult.msg && orderResult.msg.includes('Access token'));
+
+        if (isAuthError && attempt < maxRetries) {
+          console.log(`🔄 Authentication error detected on attempt ${attempt}, forcing token refresh...`);
+          
+          // Force refresh the access token
+          const newToken = await lemonService['forceRefreshAccessToken'](user_id);
+          
+          if (newToken) {
+            console.log(`✅ Token refreshed successfully, retrying order...`);
+            // Wait a bit before retry
+            await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+            continue; // Retry with new token
+          } else {
+            lastError = 'Failed to refresh access token after authentication error';
+            console.error(`❌ Token refresh failed on attempt ${attempt}`);
+            
+            if (attempt < maxRetries) {
+              await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
+              continue;
+            }
+          }
+        }
+
+        // If order succeeded or non-auth error, break the loop
+        if (orderResult.status === 'success' || !isAuthError) {
+          break;
+        }
+
+        lastError = orderResult.msg || orderResult.message || 'Unknown error';
+        
+      } catch (error) {
+        lastError = error instanceof Error ? error.message : 'Unknown error';
+        console.error(`❌ Order attempt ${attempt} failed:`, error);
+        
+        if (attempt < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+          continue;
         }
       }
+    }
 
-      console.log(`✅ Order placed successfully: ${orderResult.data.orderId}${isAMO ? ' (AMO - will execute at market open)' : ' (Regular order)'}`);
-      
-      return NextResponse.json({
-        success: true,
-        message: `${transaction_type} order placed successfully`,
-        data: responseData,
-        lemon_response: orderResult,
-        timestamp: new Date().toISOString()
-      });
-    } else {
-      console.error(`❌ Order failed:`, orderResult);
+    // If all retries failed
+    if (!orderResult || orderResult.status !== 'success') {
+      console.error(`❌ All ${maxRetries} order attempts failed`);
       return NextResponse.json({
         success: false,
-        error: `${transaction_type} order failed: ${orderResult.message || orderResult.error_code || 'Unknown error'}`,
-        error_code: orderResult.error_code,
+        error: `Order failed after ${maxRetries} attempts: ${lastError}`,
+        error_code: orderResult?.error_code,
         lemon_response: orderResult
       }, { status: 400 });
     }
+
+    // Order succeeded - prepare response
+    console.log(`✅ Order placed successfully:`, orderResult);
+    
+    const estimatedValue = stockPrice > 0 ? quantity * stockPrice : 'Market Price';
+    
+    // Save order to database for audit trail
+    await supabase
+      .from('real_orders')
+      .insert({
+        user_id,
+        lemon_order_id: orderResult.data.orderId,
+        symbol,
+        transaction_type,
+        order_type,
+        quantity,
+        price: stockPrice || 0,
+        order_status: orderResult.data.orderStatus,
+        order_reason,
+        is_amo: isAMO,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      });
+
+    const responseData: any = {
+      user: {
+        id: user.id,
+        name: user.full_name,
+        email: user.email,
+        client_id: credentials.client_id
+      },
+      order: {
+        symbol,
+        transaction_type,
+        quantity,
+        price: stockPrice > 0 ? stockPrice : 'Market',
+        order_type,
+        product_type,
+        exchange: finalExchange,
+        order_id: orderResult.data.orderId,
+        order_status: orderResult.data.orderStatus,
+        is_amo: isAMO
+      },
+      estimated_value: estimatedValue
+    };
+
+    // Add derivative info to response
+    if (isDerivative) {
+      responseData.order.contract_type = contract_type;
+      responseData.order.expiry = expiry;
+      if (contract_type === 'OPT') {
+        responseData.order.strike_price = strike_price;
+        responseData.order.option_type = option_type;
+      }
+    }
+
+    console.log(`✅ Order placed successfully: ${orderResult.data.orderId}${isAMO ? ' (AMO - will execute at market open)' : ' (Regular order)'}`);
+    
+    return NextResponse.json({
+      success: true,
+      message: `${transaction_type} order placed successfully`,
+      data: responseData,
+      lemon_response: orderResult,
+      timestamp: new Date().toISOString()
+    });
 
   } catch (error) {
     console.error('❌ Manual trade error:', error);
