@@ -231,7 +231,7 @@ export async function POST(request: NextRequest) {
     // Check if user has API credentials
     const { data: credentials, error: credError } = await supabase
       .from('api_credentials')
-      .select('client_id, is_active')
+      .select('client_id, is_active, public_key_encrypted')
       .eq('user_id', user_id)
       .single();
 
