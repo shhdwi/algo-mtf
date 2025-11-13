@@ -1,14 +1,15 @@
 import TradingClient from './tradingClient';
 import { ExchangeCode } from '@/types/chart';
 
-// Configuration matching the Pine Script implementation
+// Configuration matching the NEW Flutter/Dart implementation
 const SR_CONFIG = {
   prd: 10,           // Pivot period (10 bars on each side)
   ppsrc: 'High/Low', // Source for pivot detection
   ChannelW: 5,       // Maximum Channel Width (5% of high-low range)
   minstrength: 1,    // Minimum Strength (multiplied by 20 internally)
-  maxnumsr: 6,       // Maximum number of channels to detect
-  loopback: 290      // Lookback period (290 candles)
+  maxnumsr: 15,      // Maximum number of channels to detect (increased from 6)
+  loopback: 400,     // Lookback period (increased from 290)
+  minChannelsNearPrice: 6  // Minimum channels to return near current price
 };
 
 export interface PivotPoint {
@@ -26,6 +27,8 @@ export interface Channel {
   strength: number;
   width: number;
   widthPercent: number;
+  distance?: number; // Distance from current price (for sorting)
+  type?: 'SUPPORT' | 'RESISTANCE' | 'IN_CHANNEL'; // Classification relative to price
 }
 
 export interface SupportResistanceData {
@@ -238,28 +241,31 @@ class SupportResistanceService {
         });
       }
 
-      // Take last 290 candles for analysis
+      // Take last loopback candles for analysis
       const analysisCandles = allCandles.slice(-SR_CONFIG.loopback);
       const currentPrice = analysisCandles[analysisCandles.length - 1].close;
 
+      console.log(`📊 S/R Analysis for ${symbol}: ${analysisCandles.length} candles, Current price: ₹${currentPrice.toFixed(2)}`);
+
       // Step 1: Detect pivot points
       const pivotPoints = this.detectPivots(analysisCandles, SR_CONFIG.prd);
+      console.log(`🔍 Found ${pivotPoints.length} pivot points`);
 
       // Step 2: Calculate high-low range for channel width validation
       const hlRange = this.calculateHighLowRange(analysisCandles);
       const maxChannelWidth = (SR_CONFIG.ChannelW / 100) * hlRange;
+      console.log(`📏 Range: ₹${hlRange.toFixed(2)}, Max channel width (${SR_CONFIG.ChannelW}%): ₹${maxChannelWidth.toFixed(2)}`);
 
-      // Step 3: Form channels from pivot points
-      const allChannels = this.formChannels(pivotPoints, maxChannelWidth);
+      // Step 3: Form channels using NEW consecutive level pairs approach
+      const allChannels = this.formChannelsNewLogic(pivotPoints, maxChannelWidth);
+      console.log(`📦 Formed ${allChannels.length} channels using new logic`);
 
-      // Step 4: Calculate channel strength
-      const channelsWithStrength = this.calculateChannelStrengths(allChannels, analysisCandles);
+      // Step 4: Filter channels by proximity to current price
+      const nearbyChannels = this.filterChannelsByProximity(allChannels, currentPrice, maxChannelWidth);
+      console.log(`🎯 Selected ${nearbyChannels.length} channels near current price`);
 
-      // Step 5: Select valid channels (strength >= minstrength * 20)
-      const validChannels = this.selectValidChannels(channelsWithStrength, SR_CONFIG.minstrength * 20, SR_CONFIG.maxnumsr);
-
-      // Step 6: Classify support and resistance
-      const { nearestSupport, nearestResistance } = this.classifySupportResistance(validChannels, currentPrice);
+      // Step 5: Classify support and resistance using three-state logic
+      const { nearestSupport, nearestResistance } = this.classifySupportResistanceNewLogic(nearbyChannels, currentPrice);
 
       return {
         symbol,
@@ -268,7 +274,7 @@ class SupportResistanceService {
         current_price: currentPrice,
         nearest_support: nearestSupport,
         nearest_resistance: nearestResistance,
-        all_valid_channels: validChannels,
+        all_valid_channels: nearbyChannels,
         pivot_points: {
           highs: pivotPoints.filter(p => p.type === 'high'),
           lows: pivotPoints.filter(p => p.type === 'low')
@@ -276,7 +282,7 @@ class SupportResistanceService {
         configuration: SR_CONFIG,
         statistics: {
           total_pivots: pivotPoints.length,
-          total_channels: validChannels.length,
+          total_channels: nearbyChannels.length,
           high_low_range: hlRange,
           max_channel_width: maxChannelWidth
         }
@@ -354,111 +360,213 @@ class SupportResistanceService {
   }
 
   /**
-   * Step 2: Form channels from pivot points
+   * Step 2: Form channels using NEW consecutive level pairs approach
+   * Based on Flutter/Dart implementation
    */
-  private formChannels(pivots: PivotPoint[], maxChannelWidth: number): Channel[] {
+  private formChannelsNewLogic(pivots: PivotPoint[], maxChannelWidth: number): Channel[] {
+    if (pivots.length === 0) return [];
+
     const channels: Channel[] = [];
+    
+    // Sort pivot levels in descending order (highest to lowest)
+    const sortedLevels = [...new Set(pivots.map(p => p.price))].sort((a, b) => b - a);
+    const usedLevels = new Set<number>();
+    let lastChannelLow: number | null = null;
 
-    // Create potential channels starting from each pivot
-    for (let i = 0; i < pivots.length; i++) {
-      const startPivot = pivots[i];
-      let channelUpper = startPivot.price;
-      let channelLower = startPivot.price;
-      const channelPivots = [startPivot];
+    console.log(`🔢 Unique pivot levels: ${sortedLevels.length}`);
 
-      // Find all other pivots that fit within max channel width
-      for (let j = 0; j < pivots.length; j++) {
-        if (i === j) continue;
+    for (let i = 0; i < sortedLevels.length; i++) {
+      const level1 = sortedLevels[i];
 
-        const otherPivot = pivots[j];
-        const testUpper = Math.max(channelUpper, otherPivot.price);
-        const testLower = Math.min(channelLower, otherPivot.price);
-        const testWidth = testUpper - testLower;
+      // Skip if level is already used
+      if (usedLevels.has(level1)) {
+        continue;
+      }
 
-        // Check if this pivot fits within max channel width
-        if (testWidth <= maxChannelWidth) {
-          channelUpper = testUpper;
-          channelLower = testLower;
-          channelPivots.push(otherPivot);
+      // Skip if level is >= the low of the last created channel (to avoid overlaps)
+      if (lastChannelLow !== null && level1 >= lastChannelLow) {
+        continue;
+      }
+
+      // Calculate target: level1 - maxChannelWidth
+      const targetValue = level1 - maxChannelWidth;
+
+      // Find the pivot level just greater than targetValue (closest match)
+      let level2: number | null = null;
+      for (let j = i + 1; j < sortedLevels.length; j++) {
+        const candidateLevel = sortedLevels[j];
+        if (candidateLevel > targetValue && candidateLevel < level1) {
+          level2 = candidateLevel;
+          break; // Take first (closest) match
         }
       }
 
-      // Only create channel if it has width and multiple pivots
-      if (channelUpper !== channelLower && channelPivots.length > 1) {
-        const width = channelUpper - channelLower;
-        const widthPercent = (width / channelLower) * 100;
+      // If no valid level2 found or level2 is already used, skip
+      if (level2 === null || usedLevels.has(level2)) {
+        continue;
+      }
+
+      const difference = level1 - level2;
+
+      // Count how many pivots touch this channel (between level2 and level1)
+      const touchingPivots = pivots.filter(pivot => 
+        pivot.price >= level2! && pivot.price <= level1
+      );
+
+      const pivotCount = touchingPivots.length;
+
+      // Require at least 2 pivots to form a channel
+      if (pivotCount >= 2) {
+        const width = level1 - level2;
+        const widthPercent = (width / level2) * 100;
 
         channels.push({
-          upper: channelUpper,
-          lower: channelLower,
-          pivots: channelPivots,
-          strength: 0, // Will be calculated in next step
+          upper: level1,
+          lower: level2,
+          pivots: touchingPivots,
+          strength: pivotCount * 20, // 20 per pivot
           width,
           widthPercent
         });
+
+        // Mark levels as used
+        usedLevels.add(level1);
+        usedLevels.add(level2);
+        lastChannelLow = level2; // Update last channel low to avoid overlaps
+
+        console.log(`✓ Channel created: High=₹${level1.toFixed(2)}, Low=₹${level2.toFixed(2)}, Width=₹${difference.toFixed(2)}, Pivots=${pivotCount}, Strength=${pivotCount * 20}`);
       }
     }
 
+    console.log(`📦 Total channels formed: ${channels.length}`);
     return channels;
   }
 
   /**
-   * Step 3: Calculate channel strength
+   * NEW: Filter channels by proximity to current price
+   * Returns channels sorted by distance from price, ensuring minimum count
    */
-  private calculateChannelStrengths(channels: Channel[], candles: Array<{high: number, low: number, close: number}>): Channel[] {
-    return channels.map(channel => {
-      let strength = channel.pivots.length * 20; // 20 points per pivot
+  private filterChannelsByProximity(
+    channels: Channel[],
+    currentPrice: number,
+    maxChannelWidth: number
+  ): Channel[] {
+    if (channels.length === 0) return [];
 
-      // Add strength for historical bar touches
-      for (const candle of candles) {
-        // Check if candle touched or penetrated channel boundaries
-        const touchedUpper = Math.abs(candle.high - channel.upper) <= (channel.upper * 0.002); // 0.2% tolerance
-        const touchedLower = Math.abs(candle.low - channel.lower) <= (channel.lower * 0.002); // 0.2% tolerance
-        const penetratedChannel = candle.low <= channel.upper && candle.high >= channel.lower;
+    const minChannels = SR_CONFIG.minChannelsNearPrice;
+    const proximityThreshold = maxChannelWidth * 3; // 15% for 5% width
 
-        if (touchedUpper || touchedLower || penetratedChannel) {
-          strength += 1;
-        }
+    // Calculate distance for each channel
+    const channelsWithDistance = channels.map(channel => ({
+      ...channel,
+      distance: this.getChannelDistance(currentPrice, channel)
+    }));
+
+    // Sort by distance (nearest first)
+    channelsWithDistance.sort((a, b) => a.distance - b.distance);
+
+    // Keep channels within threshold OR until minimum count
+    const filtered: Channel[] = [];
+    for (const channel of channelsWithDistance) {
+      if (channel.distance <= proximityThreshold || filtered.length < minChannels) {
+        filtered.push(channel);
+        console.log(`  → Channel: High=₹${channel.upper.toFixed(2)}, Low=₹${channel.lower.toFixed(2)}, Distance=₹${channel.distance.toFixed(2)}, Strength=${channel.strength}`);
       }
 
-      return {
-        ...channel,
-        strength
-      };
-    });
-  }
-
-  /**
-   * Step 4: Select valid channels based on strength and non-overlap
-   */
-  private selectValidChannels(channels: Channel[], minStrength: number, maxChannels: number): Channel[] {
-    // Sort by strength (strongest first)
-    const sortedChannels = channels.sort((a, b) => b.strength - a.strength);
-    const selectedChannels: Channel[] = [];
-    const usedPivotIndices = new Set<number>();
-
-    for (const channel of sortedChannels) {
-      // Check minimum strength requirement
-      if (channel.strength < minStrength) {
-        continue;
-      }
-
-      // Check if any pivots in this channel are already used
-      const channelPivotIndices = channel.pivots.map(p => p.index);
-      const hasUsedPivots = channelPivotIndices.some(idx => usedPivotIndices.has(idx));
-
-      if (!hasUsedPivots && selectedChannels.length < maxChannels) {
-        selectedChannels.push(channel);
-        // Mark all pivots in this channel as used
-        channelPivotIndices.forEach(idx => usedPivotIndices.add(idx));
+      // Stop once we have max channels
+      if (filtered.length >= SR_CONFIG.maxnumsr) {
+        break;
       }
     }
 
-    return selectedChannels;
+    return filtered;
   }
 
   /**
-   * Step 5: Classify support and resistance relative to current price
+   * Calculate distance from a price point to a channel
+   * Returns 0 if price is within the channel, otherwise returns the shortest distance
+   */
+  private getChannelDistance(price: number, channel: Channel): number {
+    // If price is within the channel, distance is 0
+    if (price >= channel.lower && price <= channel.upper) {
+      return 0.0;
+    }
+
+    // If price is above the channel, return distance to upper bound
+    if (price > channel.upper) {
+      return price - channel.upper;
+    }
+
+    // If price is below the channel, return distance to lower bound
+    return channel.lower - price;
+  }
+
+  /**
+   * NEW: Classify support and resistance using THREE-STATE logic
+   * State 1: RESISTANCE (both upper and lower above price)
+   * State 2: SUPPORT (both upper and lower below price)
+   * State 3: IN_CHANNEL (price between upper and lower) - NOT classified as support/resistance
+   */
+  private classifySupportResistanceNewLogic(channels: Channel[], currentPrice: number): {
+    nearestSupport: any | null;
+    nearestResistance: any | null;
+  } {
+    let nearestSupport: any = null;
+    let nearestResistance: any = null;
+
+    for (const channel of channels) {
+      const { upper, lower } = channel;
+
+      // RESISTANCE: Both upper AND lower are above price (price is below entire channel)
+      if (lower > currentPrice && upper > currentPrice) {
+        // Nearest resistance = lowest "lower" bound above price
+        if (!nearestResistance || lower < nearestResistance.lower) {
+          const distancePercent = ((lower - currentPrice) / currentPrice) * 100;
+          nearestResistance = {
+            upper: upper,
+            lower: lower,
+            strength: channel.strength,
+            distance_percent: distancePercent,
+            type: 'RESISTANCE'
+          };
+          console.log(`🔴 Resistance found: ₹${lower.toFixed(2)}-₹${upper.toFixed(2)}, Distance: ${distancePercent.toFixed(2)}%`);
+        }
+      }
+      
+      // SUPPORT: Both upper AND lower are below price (price is above entire channel)
+      else if (upper < currentPrice && lower < currentPrice) {
+        // Nearest support = highest "upper" bound below price
+        if (!nearestSupport || upper > nearestSupport.upper) {
+          const distancePercent = ((currentPrice - upper) / currentPrice) * 100;
+          nearestSupport = {
+            upper: upper,
+            lower: lower,
+            strength: channel.strength,
+            distance_percent: distancePercent,
+            type: 'SUPPORT'
+          };
+          console.log(`🟢 Support found: ₹${lower.toFixed(2)}-₹${upper.toFixed(2)}, Distance: ${distancePercent.toFixed(2)}%`);
+        }
+      }
+      
+      // IN_CHANNEL: Price is between lower and upper (NEUTRAL - not classified)
+      else {
+        console.log(`⚪ In-channel (neutral): ₹${lower.toFixed(2)}-₹${upper.toFixed(2)}, Price: ₹${currentPrice.toFixed(2)}`);
+      }
+    }
+
+    if (!nearestSupport) {
+      console.log(`⚠️ No support found below current price`);
+    }
+    if (!nearestResistance) {
+      console.log(`⚠️ No resistance found above current price`);
+    }
+
+    return { nearestSupport, nearestResistance };
+  }
+
+  /**
+   * OLD: Classify support and resistance (DEPRECATED - kept for reference)
    */
   private classifySupportResistance(channels: Channel[], currentPrice: number): {
     nearestSupport: any | null;
