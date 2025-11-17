@@ -620,7 +620,7 @@ class UltimateScannerService {
   private evaluateConditions(indicators: any, histogramCount: number, resistanceCheck: any): any {
     return {
       aboveEMA: indicators.close > indicators.ema50,
-      rsiInRange: indicators.rsi14 > 50 && indicators.rsi14 <= 70,
+      rsiInRange: indicators.rsi14 > 50 && indicators.rsi14 <= 65,
       rsiAboveSMA: indicators.rsi14 >= indicators.rsiSma14,
       macdBullish: indicators.macd > indicators.macdSignal,
       histogramOk: histogramCount <= 3,
@@ -648,7 +648,7 @@ class UltimateScannerService {
       // List the failed conditions
       const failures: string[] = [];
       if (!conditions.aboveEMA) failures.push('Price below EMA50');
-      if (!conditions.rsiInRange) failures.push(`RSI not in 50-70 range (${indicators.rsi14})`);
+      if (!conditions.rsiInRange) failures.push(`RSI not in 50-65 range (${indicators.rsi14})`);
       if (!conditions.rsiAboveSMA) failures.push(`RSI below SMA (${indicators.rsi14} < ${indicators.rsiSma14})`);
       if (!conditions.macdBullish) failures.push('MACD bearish');
       if (!conditions.histogramOk) failures.push('Histogram count > 3');
@@ -768,7 +768,7 @@ class UltimateScannerService {
 
 🔍 Technical Analysis:
 • Price above EMA50: ₹${entry.current_price} > ₹${entry.indicators?.ema50} ✅
-• RSI: ${entry.indicators?.rsi14} (50-70 range) ✅  
+• RSI: ${entry.indicators?.rsi14} (50-65 range) ✅  
 • RSI above SMA: ${entry.indicators?.rsi14} > ${entry.indicators?.rsiSma14} ✅
 • MACD: ${entry.indicators?.macd} > ${entry.indicators?.macdSignal} ✅
 • Histogram: Early momentum phase ✅

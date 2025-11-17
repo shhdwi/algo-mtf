@@ -209,7 +209,7 @@ export async function GET(request: NextRequest) {
           enhanced_criteria: {
             original: [
               'Price above EMA50',
-              'RSI 50-70 range',
+              'RSI 50-65 range',
               'RSI above RSI SMA',
               'MACD bullish',
               'Histogram ≤ 3 bars',

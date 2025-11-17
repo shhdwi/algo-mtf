@@ -46,14 +46,14 @@ aboveEMA: indicators.close > indicators.ema50
 
 ### Condition 2: RSI Healthy Range
 ```typescript
-rsiInRange: indicators.rsi14 > 50 && indicators.rsi14 <= 70
+rsiInRange: indicators.rsi14 > 50 && indicators.rsi14 <= 65
 ```
-- **Threshold**: RSI(14) must be **between 50.01 and 70.00**
+- **Threshold**: RSI(14) must be **between 50.01 and 65.00**
 - **Purpose**: Ensures momentum without overbought conditions
 - **Confidence Weight**: 15%
 - **Rejection Cases**: 
   - RSI ≤ 50 (weak/neutral momentum)
-  - RSI > 70 (overbought - high reversal risk)
+  - RSI > 65 (approaching overbought - higher reversal risk)
 
 ### Condition 3: RSI Above Its SMA
 ```typescript

@@ -67,7 +67,7 @@ COMMENT ON TABLE entry_conditions IS 'Stores technical indicator values and entr
 -- Add column comments
 COMMENT ON COLUMN entry_conditions.position_id IS 'Foreign key to algorithm_positions.id';
 COMMENT ON COLUMN entry_conditions.above_ema IS 'Price was above EMA50 at entry';
-COMMENT ON COLUMN entry_conditions.rsi_in_range IS 'RSI was in 50-70 range at entry';
+COMMENT ON COLUMN entry_conditions.rsi_in_range IS 'RSI was in 50-65 range at entry';
 COMMENT ON COLUMN entry_conditions.rsi_above_sma IS 'RSI was above its SMA at entry';
 COMMENT ON COLUMN entry_conditions.macd_bullish IS 'MACD line was above signal line at entry';
 COMMENT ON COLUMN entry_conditions.histogram_ok IS 'Histogram count was <= 3 at entry';

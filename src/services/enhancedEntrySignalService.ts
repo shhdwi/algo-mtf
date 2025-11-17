@@ -286,7 +286,7 @@ class EnhancedEntrySignalService {
   ): EnhancedEntryConditions {
     // Original conditions
     const aboveEMA = indicators.close > indicators.ema50;
-    const rsiInRange = indicators.rsi14 > 50 && indicators.rsi14 <= 70;
+    const rsiInRange = indicators.rsi14 > 50 && indicators.rsi14 <= 65;
     const rsiAboveSMA = indicators.rsi14 >= indicators.rsiSma14;
     const macdBullish = indicators.macd > indicators.macdSignal;
     const histogramOk = histogramCount <= 3;

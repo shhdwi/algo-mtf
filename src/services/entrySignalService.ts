@@ -238,7 +238,7 @@ class EntrySignalService {
   ): EntryConditions {
     return {
       aboveEMA: indicators.close > indicators.ema50,
-      rsiInRange: indicators.rsi14 > 50 && indicators.rsi14 <= 70,
+      rsiInRange: indicators.rsi14 > 50 && indicators.rsi14 <= 65,
       rsiAboveSMA: indicators.rsi14 >= indicators.rsiSma14,
       macdBullish: indicators.macd > indicators.macdSignal,
       histogramOk: histogramCount <= 3,

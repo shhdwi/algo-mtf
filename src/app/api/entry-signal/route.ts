@@ -186,7 +186,7 @@ export async function GET(request: NextRequest) {
           algorithm: {
             indicators: {
               EMA50: 'Price must be above 50-period Exponential Moving Average',
-              RSI14: 'RSI must be between 50-70 (healthy momentum)',
+              RSI14: 'RSI must be between 50-65 (healthy momentum)',
               RSI_SMA14: 'RSI must be above its 14-period Simple Moving Average',
               MACD: 'MACD line must be above signal line (bullish)',
               Histogram: 'Maximum 3 consecutive positive histogram bars'
