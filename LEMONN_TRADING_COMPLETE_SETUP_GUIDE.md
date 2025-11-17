@@ -134,6 +134,45 @@ CREATE TABLE algorithm_positions (
 );
 
 -- ============================================
+-- ENTRY CONDITIONS (TECHNICAL INDICATORS AT ENTRY)
+-- ============================================
+CREATE TABLE entry_conditions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  position_id UUID NOT NULL REFERENCES algorithm_positions(id) ON DELETE CASCADE,
+  
+  -- Entry condition flags (boolean checks)
+  above_ema BOOLEAN NOT NULL,
+  rsi_in_range BOOLEAN NOT NULL,
+  rsi_above_sma BOOLEAN NOT NULL,
+  macd_bullish BOOLEAN NOT NULL,
+  histogram_ok BOOLEAN NOT NULL,
+  resistance_ok BOOLEAN NOT NULL,
+  
+  -- Technical indicator values at entry
+  ema50_value NUMERIC NOT NULL,
+  rsi14_value NUMERIC NOT NULL,
+  rsi_sma14_value NUMERIC NOT NULL,
+  macd_value NUMERIC NOT NULL,
+  macd_signal_value NUMERIC NOT NULL,
+  histogram_value NUMERIC NOT NULL,
+  histogram_count INTEGER DEFAULT 0,
+  
+  -- Support/Resistance data (optional)
+  nearest_support NUMERIC,
+  nearest_resistance NUMERIC,
+  resistance_distance_percent NUMERIC,
+  
+  -- Timestamps
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  
+  UNIQUE(position_id)
+);
+
+CREATE INDEX idx_entry_conditions_position ON entry_conditions(position_id);
+
+
+-- ============================================
 -- USER POSITIONS (ACTUAL USER TRADES)
 -- ============================================
 CREATE TABLE user_positions (
@@ -985,6 +1024,8 @@ project-root/
 This guide contains **EVERYTHING** needed to set up Lemonn trading from scratch. Follow the steps in order, and you'll have a fully functional live trading system for your users!
 
 **Need help?** Review the code examples and file locations provided throughout this guide.
+
+
 
 
 

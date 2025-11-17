@@ -361,7 +361,7 @@ class SupportResistanceService {
 
   /**
    * Step 2: Form channels using NEW consecutive level pairs approach
-   * Based on Flutter/Dart implementation
+   * Based on Flutter/Dart implementation - EXACT MATCH
    */
   private formChannelsNewLogic(pivots: PivotPoint[], maxChannelWidth: number): Channel[] {
     if (pivots.length === 0) return [];
@@ -373,40 +373,56 @@ class SupportResistanceService {
     const usedLevels = new Set<number>();
     let lastChannelLow: number | null = null;
 
-    console.log(`🔢 Unique pivot levels: ${sortedLevels.length}`);
+    console.log(`🔢 Unique pivot levels (descending): ${sortedLevels.length}`);
+    console.log(`   First 5: ${sortedLevels.slice(0, 5).map(l => l.toFixed(2)).join(', ')}`);
 
     for (let i = 0; i < sortedLevels.length; i++) {
       const level1 = sortedLevels[i];
 
       // Skip if level is already used
       if (usedLevels.has(level1)) {
+        console.log(`   Level ${i}: ₹${level1.toFixed(2)} SKIPPED (already used)`);
         continue;
       }
 
       // Skip if level is >= the low of the last created channel (to avoid overlaps)
       if (lastChannelLow !== null && level1 >= lastChannelLow) {
+        console.log(`   Level ${i}: ₹${level1.toFixed(2)} SKIPPED (>= last channel low ₹${lastChannelLow.toFixed(2)})`);
         continue;
       }
 
       // Calculate target: level1 - maxChannelWidth
       const targetValue = level1 - maxChannelWidth;
 
-      // Find the pivot level just greater than targetValue (closest match)
+      console.log(`   Level ${i}: ₹${level1.toFixed(2)}, Target=₹${targetValue.toFixed(2)} (level1 - threshold)`);
+
+      // Find the pivot level just greater than targetValue
+      // DART LOGIC: Keep iterating to find the LAST level > targetValue (closest to target)
       let level2: number | null = null;
       for (let j = i + 1; j < sortedLevels.length; j++) {
         const candidateLevel = sortedLevels[j];
-        if (candidateLevel > targetValue && candidateLevel < level1) {
-          level2 = candidateLevel;
-          break; // Take first (closest) match
+        if (candidateLevel > targetValue) {
+          level2 = candidateLevel; // Keep updating to get the closest match
+          console.log(`     → Found candidate: ₹${candidateLevel.toFixed(2)} (> ₹${targetValue.toFixed(2)})`);
+        } else {
+          // Since sortedLevels is in descending order, we've gone too low
+          break;
         }
       }
 
       // If no valid level2 found or level2 is already used, skip
-      if (level2 === null || usedLevels.has(level2)) {
+      if (level2 === null) {
+        console.log(`     ✗ No valid pair found within threshold`);
+        continue;
+      }
+      
+      if (usedLevels.has(level2)) {
+        console.log(`     ✗ Found level ₹${level2.toFixed(2)} but already used`);
         continue;
       }
 
       const difference = level1 - level2;
+      console.log(`     → Pair: ₹${level1.toFixed(2)} - ₹${level2.toFixed(2)}, Diff=₹${difference.toFixed(2)}`);
 
       // Count how many pivots touch this channel (between level2 and level1)
       const touchingPivots = pivots.filter(pivot => 
@@ -414,6 +430,7 @@ class SupportResistanceService {
       );
 
       const pivotCount = touchingPivots.length;
+      console.log(`     → Touching pivots: ${pivotCount} (${touchingPivots.map(p => p.price.toFixed(2)).join(', ')})`);
 
       // Require at least 2 pivots to form a channel
       if (pivotCount >= 2) {
@@ -434,7 +451,9 @@ class SupportResistanceService {
         usedLevels.add(level2);
         lastChannelLow = level2; // Update last channel low to avoid overlaps
 
-        console.log(`✓ Channel created: High=₹${level1.toFixed(2)}, Low=₹${level2.toFixed(2)}, Width=₹${difference.toFixed(2)}, Pivots=${pivotCount}, Strength=${pivotCount * 20}`);
+        console.log(`     ✓ CHANNEL CREATED: High=₹${level1.toFixed(2)}, Low=₹${level2.toFixed(2)}, Width=₹${difference.toFixed(2)}, Pivots=${pivotCount}, Strength=${pivotCount * 20}`);
+      } else {
+        console.log(`     ✗ Not enough pivots (need 2, found ${pivotCount})`);
       }
     }
 

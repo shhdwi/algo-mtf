@@ -126,31 +126,52 @@ class PositionManagerService {
 
   /**
    * Add entry conditions for a position
+   * Saves technical indicators and entry conditions to entry_conditions table
+   * This is saved ONCE per algorithm position, not per user
    */
   private async addEntryConditions(positionId: string, entrySignal: UltimateScanResult): Promise<void> {
     try {
+      // Prepare entry conditions data
+      const entryConditionsData: any = {
+        position_id: positionId,
+        // Boolean condition flags
+        above_ema: entrySignal.conditions.aboveEMA,
+        rsi_in_range: entrySignal.conditions.rsiInRange,
+        rsi_above_sma: entrySignal.conditions.rsiAboveSMA,
+        macd_bullish: entrySignal.conditions.macdBullish,
+        histogram_ok: entrySignal.conditions.histogramOk,
+        resistance_ok: entrySignal.conditions.resistanceOk,
+        // Technical indicator values
+        ema50_value: entrySignal.indicators.ema50,
+        rsi14_value: entrySignal.indicators.rsi14,
+        rsi_sma14_value: entrySignal.indicators.rsiSma14,
+        macd_value: entrySignal.indicators.macd,
+        macd_signal_value: entrySignal.indicators.macdSignal,
+        histogram_value: entrySignal.indicators.histogram,
+        histogram_count: entrySignal.histogramCount || 0
+      };
+
+      // Add support/resistance data if available
+      if (entrySignal.sr_analysis) {
+        if (entrySignal.sr_analysis.nearest_support) {
+          entryConditionsData.nearest_support = entrySignal.sr_analysis.nearest_support.lower;
+        }
+        if (entrySignal.sr_analysis.nearest_resistance) {
+          entryConditionsData.nearest_resistance = entrySignal.sr_analysis.nearest_resistance.lower;
+          entryConditionsData.resistance_distance_percent = entrySignal.sr_analysis.nearest_resistance.distance_percent;
+        }
+      }
+
       const { error } = await this.supabase
         .from('entry_conditions')
-        .insert({
-          position_id: positionId,
-          above_ema: entrySignal.conditions.aboveEMA,
-          rsi_in_range: entrySignal.conditions.rsiInRange,
-          rsi_above_sma: entrySignal.conditions.rsiAboveSMA,
-          macd_bullish: entrySignal.conditions.macdBullish,
-          histogram_ok: entrySignal.conditions.histogramOk,
-          resistance_ok: entrySignal.conditions.resistanceOk,
-          ema50_value: entrySignal.indicators.ema50,
-          rsi14_value: entrySignal.indicators.rsi14,
-          rsi_sma14_value: entrySignal.indicators.rsiSma14,
-          macd_value: entrySignal.indicators.macd,
-          macd_signal_value: entrySignal.indicators.macdSignal,
-          histogram_value: entrySignal.indicators.histogram,
-          histogram_count: 0 // Will be calculated later
-        });
+        .insert(entryConditionsData);
 
       if (error) throw new Error(error.message);
+      
+      console.log(`✅ Entry conditions saved for ${entrySignal.symbol} - RSI: ${entrySignal.indicators.rsi14.toFixed(2)}, EMA50: ${entrySignal.indicators.ema50.toFixed(2)}`);
     } catch (error) {
       console.error(`Error adding entry conditions for position ${positionId}:`, error);
+      // Don't throw - we don't want to block position creation if entry conditions fail
     }
   }
 
