@@ -1,6 +1,6 @@
 import { SMA, RSI, MACD, EMA } from 'technicalindicators';
 import CombinedTradingService from './combinedTradingService';
-import SupportResistanceService from './supportResistanceService';
+import SupportResistanceService, { SupportResistanceData } from './supportResistanceService';
 import WhatsAppService from './whatsappService';
 import PositionManagerService from './positionManagerService';
 import { ExchangeCode } from '@/types/chart';
@@ -32,6 +32,8 @@ export interface UltimateScanResult {
     macdSignal: number;
     histogram: number;
   };
+  histogramCount?: number;
+  sr_analysis?: SupportResistanceData;
 }
 
 /**
@@ -303,9 +305,10 @@ class UltimateScannerService {
         
         // Use Support/Resistance analysis
         let resistanceCheck;
+        let srData;
         try {
           this.log(`🔍 Running S/R analysis for ${symbol}...`);
-          const srData = await this.srService.analyzeSupportResistance(symbol, exchange);
+          srData = await this.srService.analyzeSupportResistance(symbol, exchange);
           
           // Apply your specific resistance logic
           if (!srData.nearest_resistance && !srData.nearest_support) {
@@ -352,7 +355,9 @@ class UltimateScannerService {
           retry_count: retryCount,
           token_refreshes: 0, // No longer using token refresh
           conditions,
-          indicators
+          indicators,
+          histogramCount,
+          sr_analysis: srData
         };
 
       } catch (error) {
